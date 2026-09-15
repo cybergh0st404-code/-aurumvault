@@ -7,12 +7,14 @@ interface CustodyCertificateModalProps {
   shipment: Shipment
   isOpen: boolean
   onClose: () => void
+  isLocked?: boolean
 }
 
-export function CustodyCertificateModal({ shipment, isOpen, onClose }: CustodyCertificateModalProps) {
+export function CustodyCertificateModal({ shipment, isOpen, onClose, isLocked = false }: CustodyCertificateModalProps) {
   if (!isOpen) return null
 
   const handlePrint = () => {
+    if (isLocked) return
     window.print()
   }
 
@@ -21,6 +23,59 @@ export function CustodyCertificateModal({ shipment, isOpen, onClose }: CustodyCe
     month: 'short',
     year: 'numeric',
   })
+
+  // Administrative Certificate Lockdown View
+  if (isLocked) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
+        <div className="relative w-full max-w-lg rounded-3xl border border-red-500/40 bg-[#0e1117] p-8 shadow-2xl text-center text-white">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 rounded-full p-2 text-gray-400 hover:bg-white/10 hover:text-white transition"
+          >
+            <X size={20} />
+          </button>
+
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+            <Lock size={30} />
+          </div>
+
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-red-400 mb-3">
+            Administrative Restriction
+          </span>
+
+          <h2 className="font-serif text-2xl font-bold text-white">
+            Certificate Access Locked
+          </h2>
+          <p className="text-xs text-gray-300 mt-2 leading-relaxed">
+            Official chain-of-custody documentation, LBMA assay certificates, and export manifests for consignment <strong className="text-white font-mono">{shipment.trackingNumber}</strong> have been administratively locked by the Federal Operations Command.
+          </p>
+
+          <div className="mt-6 rounded-2xl border border-[#242833] bg-[#161a24] p-4 text-left text-xs font-mono space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Security Directive:</span>
+              <span className="text-red-400 font-bold">DOCUMENT EXTRACTION REVOKED</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Enforcing Authority:</span>
+              <span className="text-gray-200">Geneva HQ Operations Desk</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Protocol Reference:</span>
+              <span className="text-[#dfba6c]">CH-SPECIE-LOCK-47</span>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="mt-6 w-full rounded-xl bg-[#242833] hover:bg-[#2d3342] text-white py-3 text-xs font-semibold transition"
+          >
+            Acknowledge & Close
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/70 p-4 backdrop-blur-sm">

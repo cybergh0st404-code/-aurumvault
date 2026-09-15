@@ -11,6 +11,9 @@ import {
   Activity,
   AlertTriangle,
   Lock,
+  Unlock,
+  Ban,
+  PowerOff,
   ArrowRight,
   Plane,
   Truck,
@@ -57,6 +60,9 @@ interface DbUser {
   avatar_initials: string
   security_clearance: string
   created_at: string
+  is_suspended?: number | boolean
+  is_dashboard_locked?: number | boolean
+  is_certificate_locked?: number | boolean
 }
 
 const vaultHubOptions = [
@@ -193,6 +199,52 @@ export function AdminCommandCenter() {
     } catch (err) {
       console.error('Failed to delete user:', err)
     }
+  }
+
+  const handleUpdateRestriction = async (userId: string, action: string, updates?: Record<string, any>) => {
+    try {
+      const val = updates?.value ?? updates?.isDashboardLocked ?? updates?.isCertificateLocked ?? updates?.isSuspended
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, userId, action, value: val, ...updates }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUserActionFeedback(`✓ Operation "${action.replace(/_/g, ' ')}" updated on ledger.`)
+        fetchUsers()
+        setTimeout(() => setUserActionFeedback(null), 4000)
+      } else {
+        alert(data.error || 'Failed to update user security privilege')
+      }
+    } catch (err) {
+      console.error('Restriction update failed:', err)
+      alert('Network error communicating with Federal Auth Gateway')
+    }
+  }
+
+  const handleToggleDashboardLock = (u: DbUser) => {
+    const nextVal = !Boolean(u.is_dashboard_locked)
+    handleUpdateRestriction(u.id, 'toggle_dashboard_lock', { isDashboardLocked: nextVal })
+  }
+
+  const handleToggleCertificateLock = (u: DbUser) => {
+    const nextVal = !Boolean(u.is_certificate_locked)
+    handleUpdateRestriction(u.id, 'toggle_certificate_lock', { isCertificateLocked: nextVal })
+  }
+
+  const handleToggleSuspend = (u: DbUser) => {
+    const nextVal = !Boolean(u.is_suspended)
+    const promptText = nextVal
+      ? `Suspend account for ${u.name}? All active sessions will be terminated and access blocked.`
+      : `Re-activate and lift suspension for ${u.name}?`
+    if (!confirm(promptText)) return
+    handleUpdateRestriction(u.id, 'toggle_suspend', { isSuspended: nextVal })
+  }
+
+  const handleRemoteLogout = (u: DbUser) => {
+    if (!confirm(`Forcibly terminate all active sessions for ${u.name}? User will be logged out immediately.`)) return
+    handleUpdateRestriction(u.id, 'logout_user')
   }
 
   // Checkpoint creator form state
@@ -1550,13 +1602,22 @@ export function AdminCommandCenter() {
               </div>
             </div>
 
-            {/* Grid: Left = Registered Users Table, Right = Add User Form */}
-            <div className="grid gap-8 lg:grid-cols-12 items-start">
-              {/* Registered Users Table (7 cols) */}
-              <div className="lg:col-span-7 rounded-3xl border border-[#242833] bg-[#11141c] shadow-2xl overflow-hidden">
-                <div className="border-b border-[#242833] p-5 sm:p-6 flex items-center justify-between">
-                  <h3 className="font-serif text-lg font-bold text-white">Active Database Identities</h3>
-                  <span className="text-[11px] text-gray-400 font-mono">Real-time SQLite Table</span>
+            {/* Grid: Full-Width Table + Responsive Provisioning Form */}
+            <div className="space-y-8">
+              {/* Registered Users Table with Full Operational Controls Deck */}
+              <div className="rounded-3xl border border-[#242833] bg-[#11141c] shadow-2xl overflow-hidden">
+                <div className="border-b border-[#242833] p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-serif text-lg font-bold text-white">
+                      Active Database Identities & Level-V Security Deck
+                    </h3>
+                    <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                      Real-time administrative privileges: lock client menus, isolate certificates, terminate active sessions & suspend accounts.
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-[#dfba6c] font-mono bg-[#dfba6c]/10 border border-[#dfba6c]/30 px-3 py-1.5 rounded-xl font-bold">
+                    Dual-Custody Authority Active
+                  </span>
                 </div>
 
                 <div className="overflow-x-auto custom-scrollbar">
@@ -1564,78 +1625,204 @@ export function AdminCommandCenter() {
                     <thead className="bg-[#0e1117] text-gray-400 uppercase tracking-wider text-[10px] font-mono border-b border-[#242833]">
                       <tr>
                         <th className="p-4">Identity & Email</th>
-                        <th className="p-4">Role & Code</th>
-                        <th className="p-4">Clearance</th>
-                        <th className="p-4 text-right">Action</th>
+                        <th className="p-4">Role & Status</th>
+                        <th className="p-4">Organization & Clearance</th>
+                        <th className="p-4">Security Privileges</th>
+                        <th className="p-4 text-right">Operational Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1e2330]">
-                      {dbUsers.map(u => (
-                        <tr key={u.id} className="hover:bg-[#161a24] transition">
-                          <td className="p-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="size-8 rounded-lg bg-gradient-to-br from-[#dfba6c] to-[#a6802e] text-black font-bold flex items-center justify-center text-xs shrink-0">
-                                {u.avatar_initials}
+                      {dbUsers.map(u => {
+                        const isSuspended = Boolean(u.is_suspended)
+                        const isDashLocked = Boolean(u.is_dashboard_locked)
+                        const isCertLocked = Boolean(u.is_certificate_locked)
+
+                        return (
+                          <tr
+                            key={u.id}
+                            className={`hover:bg-[#161a24] transition ${isSuspended ? 'bg-red-950/15' : ''}`}
+                          >
+                            <td className="p-4">
+                              <div className="flex items-center gap-2.5">
+                                <div
+                                  className={`size-9 rounded-xl ${
+                                    isSuspended
+                                      ? 'bg-red-800 text-white'
+                                      : 'bg-gradient-to-br from-[#dfba6c] to-[#a6802e] text-black'
+                                  } font-bold flex items-center justify-center text-xs shrink-0 shadow-sm`}
+                                >
+                                  {u.avatar_initials}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-bold text-white text-sm">{u.name}</p>
+                                    {isSuspended && (
+                                      <span className="rounded bg-red-500/20 border border-red-500/40 px-1.5 py-0.5 text-[9px] font-mono font-bold text-red-300">
+                                        SUSPENDED
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">{u.email}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-white">{u.name}</p>
-                                <p className="text-[11px] text-gray-400 font-mono mt-0.5">{u.email}</p>
+                            </td>
+
+                            <td className="p-4">
+                              <div className="flex flex-col gap-1">
+                                <span
+                                  className={`inline-block w-fit rounded-md px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider ${
+                                    u.role === 'admin'
+                                      ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                      : isSuspended
+                                      ? 'bg-red-900/30 text-red-400 border border-red-800'
+                                      : 'bg-[#dfba6c]/15 text-[#dfba6c] border border-[#dfba6c]/30'
+                                  }`}
+                                >
+                                  {u.role}
+                                </span>
+                                {u.client_code && (
+                                  <span className="text-[10px] text-gray-400 font-mono font-semibold">
+                                    {u.client_code}
+                                  </span>
+                                )}
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="p-4">
-                            <span
-                              className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider ${
-                                u.role === 'admin'
-                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                                  : 'bg-[#dfba6c]/15 text-[#dfba6c] border border-[#dfba6c]/30'
-                              }`}
-                            >
-                              {u.role}
-                            </span>
-                            {u.client_code && (
-                              <span className="block text-[10px] text-gray-400 font-mono mt-1 font-semibold">
-                                {u.client_code}
-                              </span>
-                            )}
-                          </td>
+                            <td className="p-4">
+                              <p className="text-xs text-white font-medium">{u.organization || 'Private Depository Client'}</p>
+                              <p className="font-mono text-[10px] text-gray-400 mt-0.5 max-w-xs truncate">
+                                {u.security_clearance}
+                              </p>
+                            </td>
 
-                          <td className="p-4 font-mono text-[10px] text-gray-300 max-w-xs truncate">
-                            {u.security_clearance}
-                          </td>
+                            {/* Security Privileges Status Indicators */}
+                            <td className="p-4">
+                              {u.role === 'client' ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold ${
+                                      isDashLocked
+                                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                        : 'bg-[#161a24] text-gray-400 border border-[#242833]'
+                                    }`}
+                                  >
+                                    <Lock size={10} className={isDashLocked ? 'text-amber-400' : 'text-gray-500'} />
+                                    {isDashLocked ? 'Menu: LOCKED' : 'Menu: Normal'}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold ${
+                                      isCertLocked
+                                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                        : 'bg-[#161a24] text-gray-400 border border-[#242833]'
+                                    }`}
+                                  >
+                                    <FileText size={10} className={isCertLocked ? 'text-amber-400' : 'text-gray-500'} />
+                                    {isCertLocked ? 'Certs: LOCKED' : 'Certs: Normal'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                                  HQ Marshal Clearance
+                                </span>
+                              )}
+                            </td>
 
-                          <td className="p-4 text-right">
-                            {u.id === user?.id ? (
-                              <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded">
-                                ACTIVE YOU
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleDeleteUser(u.id, u.name)}
-                                className="text-red-400 hover:text-red-300 rounded-lg p-1.5 hover:bg-red-500/10 transition"
-                                title="Revoke & Delete User"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                            {/* Operational Controls Deck */}
+                            <td className="p-4 text-right">
+                              {u.id === user?.id ? (
+                                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 inline-block">
+                                  ACTIVE SESSION (YOU)
+                                </span>
+                              ) : u.role === 'client' ? (
+                                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                  {/* Toggle Dashboard Lock */}
+                                  <button
+                                    onClick={() => handleToggleDashboardLock(u)}
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold transition border shadow-sm ${
+                                      isDashLocked
+                                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                                    }`}
+                                    title={isDashLocked ? 'Unlock client navigation menus' : 'Lock client navigation menus'}
+                                  >
+                                    {isDashLocked ? <Unlock size={12} /> : <Lock size={12} />}
+                                    <span>{isDashLocked ? 'Unlock Nav' : 'Lock Nav'}</span>
+                                  </button>
+
+                                  {/* Toggle Certificate Lock */}
+                                  <button
+                                    onClick={() => handleToggleCertificateLock(u)}
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold transition border shadow-sm ${
+                                      isCertLocked
+                                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                                    }`}
+                                    title={isCertLocked ? 'Unlock custody certificates' : 'Lock custody certificates'}
+                                  >
+                                    {isCertLocked ? <Unlock size={12} /> : <Lock size={12} />}
+                                    <span>{isCertLocked ? 'Unlock Certs' : 'Lock Certs'}</span>
+                                  </button>
+
+                                  {/* Force Remote Logout */}
+                                  <button
+                                    onClick={() => handleRemoteLogout(u)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-mono font-bold text-rose-300 hover:bg-rose-500/20 transition shadow-sm"
+                                    title="Immediately terminate user's active session"
+                                  >
+                                    <PowerOff size={12} />
+                                    <span>Remote Logout</span>
+                                  </button>
+
+                                  {/* Suspend / Lift Suspension */}
+                                  <button
+                                    onClick={() => handleToggleSuspend(u)}
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold transition border shadow-sm ${
+                                      isSuspended
+                                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                        : 'bg-red-500/15 text-red-300 border-red-500/30 hover:bg-red-500/25'
+                                    }`}
+                                    title={isSuspended ? 'Lift account suspension' : 'Suspend account'}
+                                  >
+                                    {isSuspended ? <CheckCircle2 size={12} /> : <Ban size={12} />}
+                                    <span>{isSuspended ? 'Unsuspend' : 'Suspend'}</span>
+                                  </button>
+
+                                  {/* Delete user */}
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id, u.name)}
+                                    className="text-gray-400 hover:text-red-300 rounded-lg p-1.5 hover:bg-red-500/10 transition"
+                                    title="Revoke & Delete User Permanently"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleDeleteUser(u.id, u.name)}
+                                  className="text-red-400 hover:text-red-300 rounded-lg p-1.5 hover:bg-red-500/10 transition"
+                                  title="Revoke & Delete User"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Create User Form (5 cols) */}
-              <div className="lg:col-span-5 rounded-3xl border border-[#242833] bg-[#11141c] p-6 sm:p-7 shadow-2xl space-y-5">
+              {/* Create User Form */}
+              <div className="rounded-3xl border border-[#242833] bg-[#11141c] p-6 sm:p-8 shadow-2xl space-y-6 max-w-4xl">
                 <div className="border-b border-[#242833] pb-4">
                   <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
-                    <Key size={17} className="text-[#dfba6c]" />
-                    <span>Enroll New Credentials</span>
+                    <Key size={18} className="text-[#dfba6c]" />
+                    <span>Enroll New Database Identity & Credentials</span>
                   </h3>
                   <p className="text-[11px] text-gray-400 font-mono mt-1">
-                    Directly insert hashed user into local SQLite database.
+                    Directly commit salted scrypt-hashed credentials into SQLite/Turso database with custom clearance levels.
                   </p>
                 </div>
 
@@ -1652,43 +1839,45 @@ export function AdminCommandCenter() {
                 )}
 
                 <form onSubmit={handleCreateUserSubmit} className="space-y-4 text-xs">
-                  <div>
-                    <label className="font-mono font-bold text-gray-300 block mb-1">Full Legal / Entity Name</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. Duchess Eleanor Rothschild"
-                      value={newUserName}
-                      onChange={e => setNewUserName(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition"
-                    />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="font-mono font-bold text-gray-300 block mb-1">Full Legal / Entity Name</label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="e.g. Duchess Eleanor Rothschild"
+                        value={newUserName}
+                        onChange={e => setNewUserName(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-mono font-bold text-gray-300 block mb-1">Identifier Email</label>
+                      <input
+                        required
+                        type="email"
+                        placeholder="e.g. eleanor@rothschild-vault.ch"
+                        value={newUserEmail}
+                        onChange={e => setNewUserEmail(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="font-mono font-bold text-gray-300 block mb-1">Identifier Email</label>
-                    <input
-                      required
-                      type="email"
-                      placeholder="e.g. eleanor@rothschild-vault.ch"
-                      value={newUserEmail}
-                      onChange={e => setNewUserEmail(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
-                    />
-                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label className="font-mono font-bold text-gray-300 block mb-1">Cryptographic Passkey</label>
+                      <input
+                        required
+                        type="password"
+                        placeholder="Enter secure passkey"
+                        value={newUserPassword}
+                        onChange={e => setNewUserPassword(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="font-mono font-bold text-gray-300 block mb-1">Cryptographic Passkey</label>
-                    <input
-                      required
-                      type="password"
-                      placeholder="Enter secure initial passkey"
-                      value={newUserPassword}
-                      onChange={e => setNewUserPassword(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="font-mono font-bold text-gray-300 block mb-1">Role Type</label>
                       <select
@@ -1713,31 +1902,33 @@ export function AdminCommandCenter() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="font-mono font-bold text-gray-300 block mb-1">Organization / Trust</label>
-                    <input
-                      type="text"
-                      placeholder="Rothschild Dynasty Trust SA"
-                      value={newUserOrg}
-                      onChange={e => setNewUserOrg(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition"
-                    />
-                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="font-mono font-bold text-gray-300 block mb-1">Organization / Trust</label>
+                      <input
+                        type="text"
+                        placeholder="Rothschild Dynasty Trust SA"
+                        value={newUserOrg}
+                        onChange={e => setNewUserOrg(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="font-mono font-bold text-gray-300 block mb-1">Security Clearance Protocol</label>
-                    <input
-                      type="text"
-                      placeholder="ALLOCATED VAULT DEPOSITOR TIER-IV"
-                      value={newUserClearance}
-                      onChange={e => setNewUserClearance(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
-                    />
+                    <div>
+                      <label className="font-mono font-bold text-gray-300 block mb-1">Security Clearance Protocol</label>
+                      <input
+                        type="text"
+                        placeholder="ALLOCATED VAULT DEPOSITOR TIER-IV"
+                        value={newUserClearance}
+                        onChange={e => setNewUserClearance(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono"
+                      />
+                    </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] py-3.5 text-xs font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-2 mt-2"
+                    className="w-full rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] py-3.5 text-xs font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-2 mt-3"
                   >
                     <ShieldCheck size={16} />
                     <span>Commit Credentials to SQLite Database</span>

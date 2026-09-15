@@ -49,10 +49,18 @@ export async function ensureDbInitialized(): Promise<void> {
         organization TEXT NOT NULL,
         avatar_initials TEXT NOT NULL,
         security_clearance TEXT NOT NULL,
+        is_suspended INTEGER NOT NULL DEFAULT 0,
+        is_dashboard_locked INTEGER NOT NULL DEFAULT 0,
+        is_certificate_locked INTEGER NOT NULL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `)
+
+    // Safe column migrations for existing SQLite / Turso databases
+    try { await db.execute('ALTER TABLE users ADD COLUMN is_suspended INTEGER NOT NULL DEFAULT 0') } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN is_dashboard_locked INTEGER NOT NULL DEFAULT 0') } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN is_certificate_locked INTEGER NOT NULL DEFAULT 0') } catch {}
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS sessions (

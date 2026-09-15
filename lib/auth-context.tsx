@@ -43,42 +43,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
 
-  // Verify active SQLite session on mount
+  // Verify active SQLite session on mount and continuously validate security restrictions
   useEffect(() => {
-    async function loadSession() {
+    let isMounted = true
+
+    async function checkSession(isInitial = false) {
       try {
-        const res = await fetch('/api/auth/session')
+        const res = await fetch('/api/auth/session', { cache: 'no-store' })
         const data = await res.json()
+        if (!isMounted) return
+
         if (data && data.user) {
-          setUser(data.user)
-          try {
-            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user))
-          } catch {}
-        } else {
-          // Check localStorage as graceful offline fallback
-          try {
-            const cached = localStorage.getItem(AUTH_STORAGE_KEY)
-            if (cached) {
-              setUser(JSON.parse(cached))
-            } else {
-              setUser(null)
+          setUser(prev => {
+            // Check if restriction properties or identity changed
+            const hasChanged =
+              !prev ||
+              prev.id !== data.user.id ||
+              prev.isDashboardLocked !== data.user.isDashboardLocked ||
+              prev.isCertificateLocked !== data.user.isCertificateLocked ||
+              prev.isSuspended !== data.user.isSuspended
+
+            if (hasChanged) {
+              try {
+                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user))
+              } catch {}
+              return data.user
             }
-          } catch {
-            setUser(null)
-          }
+            return prev
+          })
+        } else {
+          // If server reports no active session (e.g. Admin remotely logged out user or suspended account)
+          setUser(prev => {
+            if (prev) {
+              try {
+                localStorage.removeItem(AUTH_STORAGE_KEY)
+              } catch {}
+              return null
+            }
+            return null
+          })
         }
       } catch (err) {
-        console.warn('Session verification fallback to cache:', err)
-        try {
-          const cached = localStorage.getItem(AUTH_STORAGE_KEY)
-          if (cached) setUser(JSON.parse(cached))
-        } catch {}
+        if (isInitial) {
+          try {
+            const cached = localStorage.getItem(AUTH_STORAGE_KEY)
+            if (cached && isMounted) setUser(JSON.parse(cached))
+          } catch {}
+        }
       } finally {
-        setIsLoading(false)
+        if (isInitial && isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
-    loadSession()
+    checkSession(true)
+    const interval = setInterval(() => checkSession(false), 2000)
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   const persistUser = (profile: UserProfile | null) => {

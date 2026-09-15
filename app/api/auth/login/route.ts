@@ -75,6 +75,17 @@ export async function POST(request: Request) {
       )
     }
 
+    // 3.5 Check if user account is administratively suspended
+    if (user.is_suspended) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Identity Suspended: Access has been administratively revoked by Federal Operations Command (Geneva HQ). Contact Chief Marshal.',
+        },
+        { status: 403 }
+      )
+    }
+
     // Success: clear rate limiter for this identity
     resetAttempts(rateKey)
 
@@ -90,6 +101,9 @@ export async function POST(request: Request) {
       clientCode: user.client_code || undefined,
       avatarInitials: user.avatar_initials,
       securityClearance: user.security_clearance,
+      isSuspended: Boolean(user.is_suspended),
+      isDashboardLocked: Boolean(user.is_dashboard_locked),
+      isCertificateLocked: Boolean(user.is_certificate_locked),
     }
 
     const response = NextResponse.json({

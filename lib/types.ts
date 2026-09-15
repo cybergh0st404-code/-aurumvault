@@ -144,6 +144,9 @@ export interface UserProfile {
   clientCode?: string
   avatarInitials: string
   securityClearance?: string
+  isSuspended?: boolean
+  isDashboardLocked?: boolean
+  isCertificateLocked?: boolean
 }
 
 export interface VaultHolding {

@@ -210,24 +210,36 @@ export function ClientDashboard() {
           </span>
           {navMenuItems.map(item => {
             const isActive = activeTab === item.id
+            const isLocked = Boolean(user?.isDashboardLocked) && !isActive
             return (
               <button
                 key={item.id}
+                disabled={isLocked}
                 onClick={() => {
+                  if (isLocked) return
                   setActiveTab(item.id)
                   setSidebarOpen(false)
                 }}
                 className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-xs sm:text-sm font-medium transition-all duration-200 ${
                   isActive
                     ? 'bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black font-bold shadow-lg shadow-[#c29b43]/20 scale-[1.02]'
+                    : isLocked
+                    ? 'text-gray-500 bg-[#12151c]/60 cursor-not-allowed opacity-60'
                     : 'text-gray-300 hover:bg-[#181d28] hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className={isActive ? 'text-black' : 'text-[#dfba6c]'}>{item.icon}</span>
+                  <span className={isActive ? 'text-black' : isLocked ? 'text-gray-500' : 'text-[#dfba6c]'}>
+                    {item.icon}
+                  </span>
                   <span>{item.label}</span>
                 </div>
-                {item.badge && (
+                {isLocked ? (
+                  <span className="flex items-center gap-1 text-[10px] font-mono text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    <Lock size={11} />
+                    <span>LOCKED</span>
+                  </span>
+                ) : item.badge ? (
                   <span
                     className={`rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wider ${
                       isActive
@@ -239,7 +251,7 @@ export function ClientDashboard() {
                   >
                     {item.badge}
                   </span>
-                )}
+                ) : null}
               </button>
             )
           })}
@@ -308,12 +320,22 @@ export function ClientDashboard() {
             </div>
 
             <button
-              onClick={() => setActiveTab('booking')}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-4 py-2 text-xs font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20"
+              disabled={Boolean(user?.isDashboardLocked)}
+              onClick={() => {
+                if (user?.isDashboardLocked) return
+                setActiveTab('booking')
+              }}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-lg ${
+                user?.isDashboardLocked
+                  ? 'bg-[#181d28] border border-amber-500/30 text-amber-300/80 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black hover:opacity-95 shadow-[#c29b43]/20'
+              }`}
             >
-              <PlusCircle size={15} />
-              <span className="hidden sm:inline">Book Specie Movement</span>
-              <span className="sm:hidden">Book</span>
+              {user?.isDashboardLocked ? <Lock size={14} className="text-amber-400" /> : <PlusCircle size={15} />}
+              <span className="hidden sm:inline">
+                {user?.isDashboardLocked ? 'Movement Booking Locked' : 'Book Specie Movement'}
+              </span>
+              <span className="sm:hidden">{user?.isDashboardLocked ? 'Locked' : 'Book'}</span>
             </button>
 
             <button
@@ -328,6 +350,29 @@ export function ClientDashboard() {
 
         {/* WORKSPACE CANVAS SCROLLER */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+          {/* ADMINISTRATIVE LOCKDOWN WARNING BANNER */}
+          {user?.isDashboardLocked && (
+            <div className="max-w-7xl mx-auto rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-[#181a20] to-[#12141a] p-4 sm:p-5 text-amber-200 shadow-2xl flex items-start gap-4">
+              <div className="rounded-xl bg-amber-500/20 p-2.5 text-amber-300 border border-amber-500/30 shrink-0 mt-0.5">
+                <Lock size={20} />
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-amber-400 animate-ping" />
+                    Sovereign Administrative Menu Lockdown Active
+                  </span>
+                  <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-200 font-semibold">
+                    Enforced by Federal Operations Command (Geneva HQ)
+                  </span>
+                </div>
+                <p className="text-xs text-amber-100/85 mt-1.5 leading-relaxed">
+                  Dashboard navigation menus and transfer authorizations have been placed on administrative hold under Swiss Sovereign Specie Protocol. Tab switching and booking requests are restricted.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: PORTFOLIO OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6 max-w-7xl mx-auto">
@@ -641,10 +686,18 @@ export function ClientDashboard() {
 
                   <button
                     onClick={() => setActiveCertificateShipment(activeConsignment)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2.5 text-xs font-bold text-[#dfba6c] hover:bg-[#1f2433] transition shadow-md"
+                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition shadow-md ${
+                      user?.isCertificateLocked
+                        ? 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                        : 'border-[#2a2f3d] bg-[#161a24] text-[#dfba6c] hover:bg-[#1f2433]'
+                    }`}
                   >
-                    <Printer size={15} />
-                    <span>Print Chain of Custody Certificate</span>
+                    {user?.isCertificateLocked ? <Lock size={15} className="text-red-400" /> : <Printer size={15} />}
+                    <span>
+                      {user?.isCertificateLocked
+                        ? 'Certificate Access Locked by Operations'
+                        : 'Print Chain of Custody Certificate'}
+                    </span>
                   </button>
                 </div>
 
@@ -925,10 +978,18 @@ export function ClientDashboard() {
 
                       <button
                         onClick={() => setActiveCertificateShipment(shipment)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2 text-xs font-bold text-[#dfba6c] hover:bg-[#1e2330] transition self-start sm:self-auto"
+                        className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition self-start sm:self-auto ${
+                          user?.isCertificateLocked
+                            ? 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                            : 'border-[#2a2f3d] bg-[#161a24] text-[#dfba6c] hover:bg-[#1e2330]'
+                        }`}
                       >
-                        <Printer size={14} />
-                        <span>Print Official Certificate</span>
+                        {user?.isCertificateLocked ? <Lock size={14} className="text-red-400" /> : <Printer size={14} />}
+                        <span>
+                          {user?.isCertificateLocked
+                            ? 'Certificate Locked by Operations'
+                            : 'Print Official Certificate'}
+                        </span>
                         <ArrowUpRight size={14} />
                       </button>
                     </div>
@@ -1078,6 +1139,7 @@ export function ClientDashboard() {
           shipment={activeCertificateShipment}
           isOpen={!!activeCertificateShipment}
           onClose={() => setActiveCertificateShipment(null)}
+          isLocked={Boolean(user?.isCertificateLocked)}
         />
       )}
     </div>

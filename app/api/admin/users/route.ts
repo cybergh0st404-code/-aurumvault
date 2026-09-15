@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { getUserBySessionToken, listAllUsers, createUser, deleteUser } from '@/lib/db/user-repository'
+import {
+  getUserBySessionToken,
+  listAllUsers,
+  createUser,
+  deleteUser,
+  updateUserRestrictions,
+  terminateUserSessions,
+} from '@/lib/db/user-repository'
 
 async function getAdminUser() {
   const cookieStore = await cookies()
@@ -54,6 +61,58 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A user with this email address already exists.' }, { status: 409 })
     }
     return NextResponse.json({ error: 'Failed to create user.' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  const admin = await getAdminUser()
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized. Admin credentials required.' }, { status: 403 })
+  }
+
+  try {
+    const body = await request.json()
+    const targetId = body.id || body.userId
+    const action = body.action
+    const targetValue = body.value !== undefined 
+      ? Boolean(body.value) 
+      : Boolean(body.isDashboardLocked ?? body.isCertificateLocked ?? body.isSuspended)
+
+    if (!targetId || !action) {
+      return NextResponse.json({ error: 'User ID and action are required.' }, { status: 400 })
+    }
+
+    if (targetId === admin.id) {
+      return NextResponse.json({ error: 'Cannot modify security restrictions on the active Chief Marshal account.' }, { status: 400 })
+    }
+
+    if (action === 'logout_user') {
+      const terminatedCount = await terminateUserSessions(targetId)
+      return NextResponse.json({
+        success: true,
+        message: `Terminated ${terminatedCount} active session(s) for user.`,
+      })
+    }
+
+    if (action === 'toggle_dashboard_lock') {
+      const updated = await updateUserRestrictions(targetId, { isDashboardLocked: targetValue })
+      return NextResponse.json({ success: true, user: updated })
+    }
+
+    if (action === 'toggle_certificate_lock') {
+      const updated = await updateUserRestrictions(targetId, { isCertificateLocked: targetValue })
+      return NextResponse.json({ success: true, user: updated })
+    }
+
+    if (action === 'toggle_suspend') {
+      const updated = await updateUserRestrictions(targetId, { isSuspended: targetValue })
+      return NextResponse.json({ success: true, user: updated })
+    }
+
+    return NextResponse.json({ error: `Unrecognized action: ${action}` }, { status: 400 })
+  } catch (error) {
+    console.error('User restriction error:', error)
+    return NextResponse.json({ error: 'Failed to update user security status.' }, { status: 500 })
   }
 }
 
