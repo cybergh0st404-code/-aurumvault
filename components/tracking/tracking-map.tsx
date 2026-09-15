@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { Shipment } from '@/lib/types'
 import {
   Plane,
-  Truck,
   Shield,
   Radio,
   Navigation,
@@ -29,8 +28,6 @@ export function TrackingMap({
   showAdminControls = false,
   onProgressChange,
 }: TrackingMapProps) {
-  const isAir = shipment.transportMode.toLowerCase().includes('air')
-
   // Progress ratio 0.0 to 1.0 based on current shipment state
   const [progress, setProgress] = useState(shipment.progress / 100)
   const [isPlaying, setIsPlaying] = useState(true)
@@ -110,27 +107,22 @@ export function TrackingMap({
   const currentLat = shipment.origin.coords[0] + t * (shipment.destination.coords[0] - shipment.origin.coords[0])
   const currentLng = shipment.origin.coords[1] + t * (shipment.destination.coords[1] - shipment.origin.coords[1])
 
-  // Dynamic Altitude calculation
+  // Dynamic Altitude calculation (Chartered Air-Specie Corridor)
   let dynamicAltitude = '38,200 ft'
   let dynamicSpeed = '518 kts'
 
-  if (isAir) {
-    if (t < 0.15) {
-      const alt = Math.round(5000 + (t / 0.15) * 33000 + telemetryJitter.altJitter)
-      dynamicAltitude = `${alt.toLocaleString()} ft (Climbing)`
-      dynamicSpeed = `${420 + telemetryJitter.spdJitter} kts`
-    } else if (t > 0.85) {
-      const alt = Math.round(38000 - ((t - 0.85) / 0.15) * 34000 + telemetryJitter.altJitter)
-      dynamicAltitude = `${Math.max(1200, alt).toLocaleString()} ft (Descent)`
-      dynamicSpeed = `${380 + telemetryJitter.spdJitter} kts`
-    } else {
-      const alt = 38200 + telemetryJitter.altJitter
-      dynamicAltitude = `${alt.toLocaleString()} ft (Cruise FL380)`
-      dynamicSpeed = `${518 + telemetryJitter.spdJitter} kts`
-    }
+  if (t < 0.15) {
+    const alt = Math.round(5000 + (t / 0.15) * 33000 + telemetryJitter.altJitter)
+    dynamicAltitude = `${alt.toLocaleString()} ft (Climbing)`
+    dynamicSpeed = `${420 + telemetryJitter.spdJitter} kts`
+  } else if (t > 0.85) {
+    const alt = Math.round(38000 - ((t - 0.85) / 0.15) * 34000 + telemetryJitter.altJitter)
+    dynamicAltitude = `${Math.max(1200, alt).toLocaleString()} ft (Descent)`
+    dynamicSpeed = `${380 + telemetryJitter.spdJitter} kts`
   } else {
-    dynamicAltitude = `${Math.round(1450 + telemetryJitter.altJitter / 2)} ft (Ground Corridor)`
-    dynamicSpeed = `${72 + telemetryJitter.spdJitter} km/h (Convoy)`
+    const alt = 38200 + telemetryJitter.altJitter
+    dynamicAltitude = `${alt.toLocaleString()} ft (Cruise FL380)`
+    dynamicSpeed = `${518 + telemetryJitter.spdJitter} kts`
   }
 
   // Trailing breadcrumbs
@@ -290,11 +282,7 @@ export function TrackingMap({
                   className="relative flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_25px_rgba(194,155,67,0.9)] border-2 border-white/60 transition-transform duration-100"
                   style={{ transform: `rotate(${tangentAngle.toFixed(2)}deg)` }}
                 >
-                  {isAir ? (
-                    <Plane size={20} className="rotate-45 drop-shadow" />
-                  ) : (
-                    <Truck size={20} className="drop-shadow" />
-                  )}
+                  <Plane size={22} className="rotate-45 drop-shadow" />
                 </div>
 
                 {/* Floating Telemetry Callout Pill */}

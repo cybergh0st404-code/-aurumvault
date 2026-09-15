@@ -86,12 +86,15 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       const savedShipments = localStorage.getItem(STORAGE_KEY)
       if (savedShipments) {
         const parsed: Shipment[] = JSON.parse(savedShipments)
-        // Ensure default shipments have clientCode if missing from prior storage
-        const merged = parsed.map(s => {
-          const def = defaultShipments.find(d => d.id === s.id)
-          return def?.clientCode && !s.clientCode ? { ...s, clientCode: def.clientCode } : s
+        // Refresh default shipments with current flight parameters while preserving live progress
+        const merged = defaultShipments.map(def => {
+          const saved = parsed.find(s => s.id === def.id)
+          return saved
+            ? { ...def, progress: saved.progress ?? def.progress }
+            : def
         })
-        setShipments(merged)
+        const custom = parsed.filter(s => !defaultShipments.some(def => def.id === s.id))
+        setShipments([...merged, ...custom])
       }
       const savedQuotes = localStorage.getItem(QUOTES_STORAGE_KEY)
       if (savedQuotes) {
