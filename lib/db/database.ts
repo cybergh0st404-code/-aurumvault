@@ -1,0 +1,114 @@
+import { createClient, Client } from '@libsql/client'
+import fs from 'node:fs'
+import path from 'node:path'
+import { hashPassword } from './password'
+
+let clientInstance: Client | null = null
+let initPromise: Promise<void> | null = null
+
+export function getDb(): Client {
+  if (clientInstance) {
+    return clientInstance
+  }
+
+  const url = process.env.TURSO_DATABASE_URL || 'file:data/vault.db'
+  const authToken = process.env.TURSO_AUTH_TOKEN
+
+  // Ensure local data directory exists if using local file
+  if (url.startsWith('file:')) {
+    const dbDir = path.join(process.cwd(), 'data')
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true })
+    }
+  }
+
+  clientInstance = createClient({
+    url,
+    authToken,
+  })
+
+  return clientInstance
+}
+
+export async function ensureDbInitialized(): Promise<void> {
+  if (initPromise) return initPromise
+
+  initPromise = (async () => {
+    const db = getDb()
+
+    // 1. Create tables and indexes
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin', 'client')),
+        client_code TEXT,
+        organization TEXT NOT NULL,
+        avatar_initials TEXT NOT NULL,
+        security_clearance TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);`)
+
+    // 2. Check if users table is empty; if so, seed default accounts
+    const countRes = await db.execute('SELECT COUNT(*) as count FROM users')
+    const count = Number(countRes.rows[0]?.count ?? 0)
+
+    if (count === 0) {
+      await seedDefaultUsers(db)
+    }
+  })()
+
+  return initPromise
+}
+
+async function seedDefaultUsers(db: Client) {
+  // Read initial sovereign admin credentials strictly from environment variables
+  const email = (process.env.ADMIN_EMAIL || 'chief.marshal@aurumvault.ch').trim().toLowerCase()
+  const password = process.env.ADMIN_PASSWORD || 'SwissVault2026!'
+  const name = process.env.ADMIN_NAME || 'Marshal Henri Weber'
+  const organization = process.env.ADMIN_ORGANIZATION || 'AurumVault Federal Operations Command (Geneva HQ)'
+  const clearance = process.env.ADMIN_CLEARANCE || 'LEVEL-V SWISS AIRSPACE COMMAND (ARMED SPECIE)'
+
+  const initials = name
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'AV'
+
+  const adminCreds = hashPassword(password)
+  await db.execute({
+    sql: `INSERT INTO users (
+      id, email, password_hash, password_salt, name, role, client_code, organization, avatar_initials, security_clearance
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      'USR-ADM-001',
+      email,
+      adminCreds.hash,
+      adminCreds.salt,
+      name,
+      'admin',
+      null,
+      organization,
+      initials,
+      clearance,
+    ],
+  })
+}
