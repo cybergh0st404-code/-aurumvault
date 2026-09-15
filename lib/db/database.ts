@@ -111,4 +111,24 @@ async function seedDefaultUsers(db: Client) {
       clearance,
     ],
   })
+
+  // Linda S Hudson (Private Specie Client - Indiana / Kentucky Consignment)
+  const clientCreds = hashPassword('Hudson2026!')
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO users (
+      id, email, password_hash, password_salt, name, role, client_code, organization, avatar_initials, security_clearance
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      'USR-CLI-HUDSON',
+      'lindahudson2p@gmail.com',
+      clientCreds.hash,
+      clientCreds.salt,
+      'Linda S Hudson',
+      'client',
+      'CLIENT-HUDSON',
+      'Linda S Hudson Specie Trust (Hanover Park, IL)',
+      'LH',
+      'ALLOCATED SOVEREIGN DEPOSITOR #IND-60133',
+    ],
+  })
 }
