@@ -17,6 +17,9 @@ export interface DbUserRecord {
   is_suspended?: number
   is_dashboard_locked?: number
   is_certificate_locked?: number
+  notice_active?: number
+  notice_title?: string | null
+  notice_message?: string | null
   created_at: string
   updated_at: string
 }
@@ -54,6 +57,8 @@ export async function listAllUsers(): Promise<SafeUserRecord[]> {
            COALESCE(is_suspended, 0) as is_suspended,
            COALESCE(is_dashboard_locked, 0) as is_dashboard_locked,
            COALESCE(is_certificate_locked, 0) as is_certificate_locked,
+           COALESCE(notice_active, 0) as notice_active,
+           notice_title, notice_message,
            created_at, updated_at
     FROM users
     ORDER BY role ASC, created_at DESC
@@ -166,6 +171,8 @@ export async function getUserBySessionToken(token: string): Promise<UserProfile 
              COALESCE(u.is_suspended, 0) as is_suspended,
              COALESCE(u.is_dashboard_locked, 0) as is_dashboard_locked,
              COALESCE(u.is_certificate_locked, 0) as is_certificate_locked,
+             COALESCE(u.notice_active, 0) as notice_active,
+             u.notice_title, u.notice_message,
              s.expires_at
       FROM sessions s
       JOIN users u ON s.user_id = u.id
@@ -204,6 +211,9 @@ export async function getUserBySessionToken(token: string): Promise<UserProfile 
     isSuspended: Boolean(row.is_suspended),
     isDashboardLocked: Boolean(row.is_dashboard_locked),
     isCertificateLocked: Boolean(row.is_certificate_locked),
+    noticeActive: Boolean(row.notice_active),
+    noticeTitle: row.notice_title ? String(row.notice_title) : null,
+    noticeMessage: row.notice_message ? String(row.notice_message) : null,
   }
 }
 
@@ -232,6 +242,9 @@ export async function updateUserRestrictions(
     isSuspended?: boolean
     isDashboardLocked?: boolean
     isCertificateLocked?: boolean
+    noticeActive?: boolean
+    noticeTitle?: string | null
+    noticeMessage?: string | null
   }
 ): Promise<SafeUserRecord | null> {
   await ensureDbInitialized()
@@ -252,11 +265,25 @@ export async function updateUserRestrictions(
     ? (updates.isCertificateLocked ? 1 : 0)
     : (user.is_certificate_locked ?? 0)
 
+  const notice_active = updates.noticeActive !== undefined
+    ? (updates.noticeActive ? 1 : 0)
+    : (user.notice_active ?? 0)
+
+  const notice_title = updates.noticeTitle !== undefined
+    ? updates.noticeTitle
+    : (user.notice_title ?? null)
+
+  const notice_message = updates.noticeMessage !== undefined
+    ? updates.noticeMessage
+    : (user.notice_message ?? null)
+
   await db.execute({
     sql: `UPDATE users
-          SET is_suspended = ?, is_dashboard_locked = ?, is_certificate_locked = ?, updated_at = CURRENT_TIMESTAMP
+          SET is_suspended = ?, is_dashboard_locked = ?, is_certificate_locked = ?,
+              notice_active = ?, notice_title = ?, notice_message = ?,
+              updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
-    args: [is_suspended, is_dashboard_locked, is_certificate_locked, userId],
+    args: [is_suspended, is_dashboard_locked, is_certificate_locked, notice_active, notice_title, notice_message, userId],
   })
 
   // If user was suspended, terminate all their active sessions immediately

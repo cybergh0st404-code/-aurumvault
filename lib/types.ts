@@ -147,6 +147,9 @@ export interface UserProfile {
   isSuspended?: boolean
   isDashboardLocked?: boolean
   isCertificateLocked?: boolean
+  noticeActive?: boolean
+  noticeTitle?: string | null
+  noticeMessage?: string | null
 }
 
 export interface VaultHolding {

@@ -109,6 +109,21 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true, user: updated })
     }
 
+    if (action === 'set_notice' || action === 'toggle_notice') {
+      const noticeActive = body.noticeActive !== undefined
+        ? Boolean(body.noticeActive)
+        : (body.value !== undefined ? Boolean(body.value) : true)
+      const noticeTitle = body.noticeTitle !== undefined ? body.noticeTitle : null
+      const noticeMessage = body.noticeMessage !== undefined ? body.noticeMessage : null
+
+      const updated = await updateUserRestrictions(targetId, {
+        noticeActive,
+        noticeTitle,
+        noticeMessage,
+      })
+      return NextResponse.json({ success: true, user: updated })
+    }
+
     return NextResponse.json({ error: `Unrecognized action: ${action}` }, { status: 400 })
   } catch (error) {
     console.error('User restriction error:', error)

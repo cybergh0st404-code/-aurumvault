@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useShipments } from '@/lib/shipments-context'
 import { Shipment, VaultHolding } from '@/lib/types'
 import { TrackingMap } from '@/components/tracking/tracking-map'
 import { CustodyCertificateModal } from '@/components/tracking/custody-certificate-modal'
+import { ClientNoticeModal } from '@/components/client/client-notice-modal'
 import {
   Shield,
   Lock,
@@ -52,6 +53,16 @@ export function ClientDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedHoldingForBooking, setSelectedHoldingForBooking] = useState<VaultHolding | null>(null)
   const [activeCertificateShipment, setActiveCertificateShipment] = useState<Shipment | null>(null)
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false)
+
+  // Automatically trigger modal when noticeActive is active
+  useEffect(() => {
+    if (user?.noticeActive) {
+      setNoticeModalOpen(true)
+    } else {
+      setNoticeModalOpen(false)
+    }
+  }, [user?.noticeActive])
 
   // Booking Form State
   const [bookingDestination, setBookingDestination] = useState('London (LBMA Vault Complex)')
@@ -217,6 +228,9 @@ export function ClientDashboard() {
                 disabled={isLocked}
                 onClick={() => {
                   if (isLocked) return
+                  if (item.id === 'radar' && user?.noticeActive) {
+                    setNoticeModalOpen(true)
+                  }
                   setActiveTab(item.id)
                   setSidebarOpen(false)
                 }}
@@ -502,7 +516,12 @@ export function ClientDashboard() {
                     </div>
 
                     <button
-                      onClick={() => setActiveTab('radar')}
+                      onClick={() => {
+                        if (user?.noticeActive) {
+                          setNoticeModalOpen(true)
+                        }
+                        setActiveTab('radar')
+                      }}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 shrink-0 self-start md:self-auto"
                     >
                       <Compass size={16} />
@@ -637,6 +656,36 @@ export function ClientDashboard() {
           {/* TAB 2: LIVE CONSIGNMENT RADAR (INSTRUMENT COCKPIT) */}
           {activeTab === 'radar' && (
             <div className="space-y-6 max-w-7xl mx-auto">
+              {/* Sovereign Notice Alert Banner on Radar Cockpit */}
+              {user?.noticeActive && (
+                <div className="rounded-3xl border-2 border-amber-500/40 bg-amber-950/25 p-5 sm:p-6 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+                  <div className="flex items-start sm:items-center gap-3.5">
+                    <div className="size-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-sm">
+                      <AlertTriangle size={20} className="animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 text-[9px] font-mono font-bold text-amber-300 uppercase tracking-wider">
+                          CARGO TRANSIT RESTRICTION
+                        </span>
+                        <span className="font-mono text-xs font-bold text-white">
+                          {user.noticeTitle || 'SHIPMENT PROCESSING NOTICE'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-300 font-medium mt-1 line-clamp-2 leading-relaxed">
+                        {user.noticeMessage || 'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setNoticeModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-4 py-2.5 text-xs font-bold text-black hover:opacity-95 transition shrink-0 font-mono shadow-md"
+                  >
+                    <span>Inspect Full Directive</span>
+                    <ArrowUpRight size={14} />
+                  </button>
+                </div>
+              )}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-serif text-2xl sm:text-3xl font-bold text-white tracking-tight">
@@ -1142,6 +1191,16 @@ export function ClientDashboard() {
           isLocked={Boolean(user?.isCertificateLocked)}
         />
       )}
+
+      {/* Sovereign Client Notice Modal */}
+      <ClientNoticeModal
+        isOpen={noticeModalOpen && Boolean(user?.noticeActive)}
+        onClose={() => setNoticeModalOpen(false)}
+        title={user?.noticeTitle}
+        message={user?.noticeMessage}
+        clientName={user?.name}
+        clientCode={user?.clientCode}
+      />
     </div>
   )
 }

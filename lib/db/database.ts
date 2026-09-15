@@ -52,6 +52,9 @@ export async function ensureDbInitialized(): Promise<void> {
         is_suspended INTEGER NOT NULL DEFAULT 0,
         is_dashboard_locked INTEGER NOT NULL DEFAULT 0,
         is_certificate_locked INTEGER NOT NULL DEFAULT 0,
+        notice_active INTEGER NOT NULL DEFAULT 0,
+        notice_title TEXT,
+        notice_message TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -61,6 +64,9 @@ export async function ensureDbInitialized(): Promise<void> {
     try { await db.execute('ALTER TABLE users ADD COLUMN is_suspended INTEGER NOT NULL DEFAULT 0') } catch {}
     try { await db.execute('ALTER TABLE users ADD COLUMN is_dashboard_locked INTEGER NOT NULL DEFAULT 0') } catch {}
     try { await db.execute('ALTER TABLE users ADD COLUMN is_certificate_locked INTEGER NOT NULL DEFAULT 0') } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN notice_active INTEGER NOT NULL DEFAULT 0') } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN notice_title TEXT') } catch {}
+    try { await db.execute('ALTER TABLE users ADD COLUMN notice_message TEXT') } catch {}
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS sessions (

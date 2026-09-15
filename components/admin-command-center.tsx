@@ -47,6 +47,7 @@ import {
   Gauge,
   Layers,
   Users,
+  Bell,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -63,6 +64,9 @@ interface DbUser {
   is_suspended?: number | boolean
   is_dashboard_locked?: number | boolean
   is_certificate_locked?: number | boolean
+  notice_active?: number | boolean
+  notice_title?: string | null
+  notice_message?: string | null
 }
 
 const vaultHubOptions = [
@@ -111,6 +115,14 @@ export function AdminCommandCenter() {
   const [dbUsers, setDbUsers] = useState<DbUser[]>([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [userActionFeedback, setUserActionFeedback] = useState<string | null>(null)
+
+  // Notice Dispatcher State
+  const [selectedUserForNotice, setSelectedUserForNotice] = useState<DbUser | null>(null)
+  const [noticeTitleInput, setNoticeTitleInput] = useState('SHIPMENT PROCESSING NOTICE')
+  const [noticeMessageInput, setNoticeMessageInput] = useState(
+    'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
+  )
+  const [isSubmittingNotice, setIsSubmittingNotice] = useState(false)
 
   const adminNavItems = [
     { id: 'fleet', label: 'Active Fleet & Radar', icon: <Activity size={18} />, badge: shipments.length },
@@ -245,6 +257,51 @@ export function AdminCommandCenter() {
   const handleRemoteLogout = (u: DbUser) => {
     if (!confirm(`Forcibly terminate all active sessions for ${u.name}? User will be logged out immediately.`)) return
     handleUpdateRestriction(u.id, 'logout_user')
+  }
+
+  const handleOpenNoticeModal = (u: DbUser) => {
+    setSelectedUserForNotice(u)
+    setNoticeTitleInput(u.notice_title || 'SHIPMENT PROCESSING NOTICE')
+    setNoticeMessageInput(
+      u.notice_message ||
+        'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
+    )
+  }
+
+  const handleSaveNotice = async (activate: boolean) => {
+    if (!selectedUserForNotice) return
+    setIsSubmittingNotice(true)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedUserForNotice.id,
+          action: 'set_notice',
+          noticeActive: activate,
+          noticeTitle: noticeTitleInput.trim() || 'SHIPMENT PROCESSING NOTICE',
+          noticeMessage: noticeMessageInput.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUserActionFeedback(
+          activate
+            ? `✓ Notice directive activated and dispatched to ${selectedUserForNotice.name}.`
+            : `✓ Notice directive deactivated and withdrawn for ${selectedUserForNotice.name}.`
+        )
+        setSelectedUserForNotice(null)
+        fetchUsers()
+        setTimeout(() => setUserActionFeedback(null), 4000)
+      } else {
+        alert(data.error || 'Failed to update user notice.')
+      }
+    } catch (err) {
+      console.error('Failed to save notice:', err)
+      alert('Network error updating user notice.')
+    } finally {
+      setIsSubmittingNotice(false)
+    }
   }
 
   // Checkpoint creator form state
@@ -1719,6 +1776,16 @@ export function AdminCommandCenter() {
                                     <FileText size={10} className={isCertLocked ? 'text-amber-400' : 'text-gray-500'} />
                                     {isCertLocked ? 'Certs: LOCKED' : 'Certs: Normal'}
                                   </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold ${
+                                      Boolean(u.notice_active)
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/20'
+                                        : 'bg-[#161a24] text-gray-400 border border-[#242833]'
+                                    }`}
+                                  >
+                                    <Bell size={10} className={Boolean(u.notice_active) ? 'text-amber-400 animate-bounce' : 'text-gray-500'} />
+                                    {Boolean(u.notice_active) ? 'Notice: ACTIVE' : 'Notice: None'}
+                                  </span>
                                 </div>
                               ) : (
                                 <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
@@ -1761,6 +1828,20 @@ export function AdminCommandCenter() {
                                   >
                                     {isCertLocked ? <Unlock size={12} /> : <Lock size={12} />}
                                     <span>{isCertLocked ? 'Unlock Certs' : 'Lock Certs'}</span>
+                                  </button>
+
+                                  {/* Dispatch / Manage Notice */}
+                                  <button
+                                    onClick={() => handleOpenNoticeModal(u)}
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold transition border shadow-sm ${
+                                      Boolean(u.notice_active)
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 ring-1 ring-amber-500/30'
+                                        : 'bg-[#1e2330] text-gray-300 border-[#2a2f3d] hover:bg-[#252b3b] hover:text-white'
+                                    }`}
+                                    title={Boolean(u.notice_active) ? 'Manage active notice / fees' : 'Dispatch notice / fees to user'}
+                                  >
+                                    <Bell size={12} className={Boolean(u.notice_active) ? 'text-amber-400' : 'text-gray-400'} />
+                                    <span>{Boolean(u.notice_active) ? 'Notice (Active)' : 'Send Notice'}</span>
                                   </button>
 
                                   {/* Force Remote Logout */}
@@ -1940,6 +2021,106 @@ export function AdminCommandCenter() {
         )}
         </main>
       </div>
+
+      {/* Admin Notice Dispatch Modal */}
+      {selectedUserForNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg rounded-3xl border border-[#2a2f3d] bg-[#11141c] p-6 sm:p-7 shadow-2xl text-white font-sans ring-1 ring-amber-500/20 space-y-5">
+            <div className="flex items-start justify-between border-b border-[#242833] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                  <Bell size={20} />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-white">
+                    Dispatch Client Notification Directive
+                  </h3>
+                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                    Target: <strong className="text-white">{selectedUserForNotice.name}</strong> ({selectedUserForNotice.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedUserForNotice(null)}
+                className="rounded-xl border border-[#242833] bg-[#161a24] p-2 text-gray-400 hover:text-white hover:bg-[#1e2330] transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="font-mono font-bold text-gray-300 block mb-1">
+                  Notice Headline / Directive Title
+                </label>
+                <input
+                  type="text"
+                  value={noticeTitleInput}
+                  onChange={e => setNoticeTitleInput(e.target.value)}
+                  placeholder="e.g. SHIPMENT PROCESSING NOTICE"
+                  className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="font-mono font-bold text-gray-300 block mb-1">
+                  Directive Body / Fee & Processing Text
+                </label>
+                <textarea
+                  rows={4}
+                  value={noticeMessageInput}
+                  onChange={e => setNoticeMessageInput(e.target.value)}
+                  placeholder="Enter notice text that will persistently appear on client screen..."
+                  className="w-full rounded-xl border border-[#242833] bg-[#161a24] p-3 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-sans leading-relaxed"
+                />
+                <p className="text-[10px] text-gray-400 font-mono mt-1">
+                  This notice will persistently pop up on the client dashboard and intercept live radar tracking.
+                </p>
+              </div>
+
+              {Boolean(selectedUserForNotice.notice_active) && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 font-mono flex items-center justify-between">
+                  <span>● Notice is currently ACTIVE on recipient account.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-[#242833] pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              {Boolean(selectedUserForNotice.notice_active) ? (
+                <button
+                  type="button"
+                  disabled={isSubmittingNotice}
+                  onClick={() => handleSaveNotice(false)}
+                  className="w-full sm:w-auto rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-mono font-bold text-red-300 hover:bg-red-500/20 transition"
+                >
+                  Withdraw / Deactivate Notice
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForNotice(null)}
+                  className="w-full sm:w-auto rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2 text-xs font-mono text-gray-300 hover:bg-[#1f2433] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingNotice}
+                  onClick={() => handleSaveNotice(true)}
+                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-2 text-xs font-mono font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-1.5"
+                >
+                  <Bell size={13} />
+                  <span>{isSubmittingNotice ? 'Broadcasting...' : 'Activate & Broadcast Notice'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
