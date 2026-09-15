@@ -21,23 +21,48 @@ interface TrackingMapProps {
   shipment: Shipment
   showAdminControls?: boolean
   onProgressChange?: (newProgress: number) => void
+  onPlayPauseChange?: (isPlaying: boolean) => void
+  onSpeedChange?: (speed: 1 | 4 | 10) => void
 }
 
 export function TrackingMap({
   shipment,
   showAdminControls = false,
   onProgressChange,
+  onPlayPauseChange,
+  onSpeedChange,
 }: TrackingMapProps) {
+  // Respect server-synchronized pause and speed states
+  const [localIsPlaying, setLocalIsPlaying] = useState(
+    shipment.isPaused !== undefined ? !shipment.isPaused : true
+  )
+  const isPlaying = shipment.isPaused !== undefined ? !shipment.isPaused : localIsPlaying
+
+  const [localSpeedMultiplier, setLocalSpeedMultiplier] = useState<1 | 4 | 10>(
+    (shipment.speedMultiplier as 1 | 4 | 10) || 1
+  )
+  const speedMultiplier = (shipment.speedMultiplier as 1 | 4 | 10) || localSpeedMultiplier
+
   // Progress ratio 0.0 to 1.0 based on current shipment state
   const [progress, setProgress] = useState(shipment.progress / 100)
-  const [isPlaying, setIsPlaying] = useState(true)
-  const [speedMultiplier, setSpeedMultiplier] = useState<1 | 4 | 10>(1)
   const [telemetryJitter, setTelemetryJitter] = useState({ altJitter: 0, spdJitter: 0 })
 
-  // Sync with shipment external changes
+  // Sync with external shipment changes (from server poller)
   useEffect(() => {
     setProgress(shipment.progress / 100)
   }, [shipment.progress, shipment.id])
+
+  useEffect(() => {
+    if (shipment.isPaused !== undefined) {
+      setLocalIsPlaying(!shipment.isPaused)
+    }
+  }, [shipment.isPaused])
+
+  useEffect(() => {
+    if (shipment.speedMultiplier) {
+      setLocalSpeedMultiplier(shipment.speedMultiplier as 1 | 4 | 10)
+    }
+  }, [shipment.speedMultiplier])
 
   // Continuous animation loop for real-time movement
   const lastTimeRef = useRef<number | null>(null)
@@ -148,11 +173,23 @@ export function TrackingMap({
                 Live Flight Corridor Telemetry
               </span>
               <span className="relative flex size-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+                <span
+                  className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    isPlaying ? 'animate-ping bg-emerald-400' : 'bg-amber-400'
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex size-2 rounded-full ${
+                    isPlaying ? 'bg-emerald-400' : 'bg-amber-400'
+                  }`}
+                />
               </span>
-              <span className="font-mono text-[10px] text-emerald-400 font-semibold">
-                {isPlaying ? 'TRACKING LIVE • 100% IN CORRIDOR' : 'RADAR STANDBY'}
+              <span
+                className={`font-mono text-[10px] font-semibold ${
+                  isPlaying ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {isPlaying ? 'TRACKING LIVE • 100% IN CORRIDOR' : 'RADAR STANDBY • CONTROL HOLD (PAUSED)'}
               </span>
             </div>
             <p className="text-xs text-background/70 font-mono">
@@ -328,8 +365,12 @@ export function TrackingMap({
             {/* Play / Pause / Replay Buttons */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm"
+                onClick={() => {
+                  const nextPlaying = !isPlaying
+                  setLocalIsPlaying(nextPlaying)
+                  if (onPlayPauseChange) onPlayPauseChange(nextPlaying)
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm cursor-pointer"
               >
                 {isPlaying ? <Pause size={13} /> : <Play size={13} />}
                 {isPlaying ? 'Pause Radar' : 'Resume Live'}
@@ -339,9 +380,10 @@ export function TrackingMap({
                 onClick={() => {
                   setProgress(0.02)
                   if (onProgressChange) onProgressChange(2)
-                  setIsPlaying(true)
+                  setLocalIsPlaying(true)
+                  if (onPlayPauseChange) onPlayPauseChange(true)
                 }}
-                className="inline-flex items-center gap-1 rounded-full border border-background/20 bg-background/5 px-2.5 py-1.5 text-xs text-background/80 hover:bg-background/10 transition"
+                className="inline-flex items-center gap-1 rounded-full border border-background/20 bg-background/5 px-2.5 py-1.5 text-xs text-background/80 hover:bg-background/10 transition cursor-pointer"
               >
                 <RotateCcw size={12} />
                 Reset Route
@@ -354,8 +396,11 @@ export function TrackingMap({
               {([1, 4, 10] as const).map(rate => (
                 <button
                   key={rate}
-                  onClick={() => setSpeedMultiplier(rate)}
-                  className={`rounded px-2 py-0.5 font-semibold transition ${
+                  onClick={() => {
+                    setLocalSpeedMultiplier(rate)
+                    if (onSpeedChange) onSpeedChange(rate)
+                  }}
+                  className={`rounded px-2 py-0.5 font-semibold transition cursor-pointer ${
                     speedMultiplier === rate
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-background/10 text-background/70 hover:bg-background/20'
@@ -393,9 +438,9 @@ export function TrackingMap({
               <Lock size={12} className="text-primary" />
               <span>Sovereign Transit Corridor: <strong className="text-background font-medium">Encrypted Live Stream</strong></span>
             </div>
-            <div className="flex items-center gap-2 text-emerald-400 font-mono text-[11px]">
-              <span className="size-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>Telemetry Downlink: 99.4% Synchronized</span>
+            <div className={`flex items-center gap-2 font-mono text-[11px] ${isPlaying ? 'text-emerald-400' : 'text-amber-400'}`}>
+              <span className={`size-2 rounded-full ${isPlaying ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+              <span>{isPlaying ? 'Telemetry Downlink: 99.4% Synchronized' : 'Operations Hold: Flight Paused by Command'}</span>
             </div>
           </div>
         )}

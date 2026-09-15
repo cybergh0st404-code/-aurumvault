@@ -63,8 +63,27 @@ export async function ensureDbInitialized(): Promise<void> {
       );
     `)
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS shipment_telemetry (
+        shipment_id TEXT PRIMARY KEY,
+        progress REAL NOT NULL DEFAULT 55.0,
+        is_paused INTEGER NOT NULL DEFAULT 0,
+        speed_multiplier REAL NOT NULL DEFAULT 1.0,
+        status TEXT,
+        updated_at INTEGER NOT NULL
+      );
+    `)
+
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`)
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);`)
+
+    // Seed initial telemetry for consignment GOLD-2026-093901 (AV-US-93901) if not present
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO shipment_telemetry (
+        shipment_id, progress, is_paused, speed_multiplier, status, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['GOLD-2026-093901', 55.0, 0, 1.0, 'In Transit — Chartered Air-Specie Corridor', Date.now()],
+    })
 
     // 2. Check if users table is empty; if so, seed default accounts
     const countRes = await db.execute('SELECT COUNT(*) as count FROM users')

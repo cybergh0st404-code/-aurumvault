@@ -97,6 +97,8 @@ export interface Shipment {
   eta: string
   dispatchedAt: string
   progress: number
+  isPaused?: boolean
+  speedMultiplier?: number
   transportMode: string
   carrierFlightNumber?: string
   custodyOfficer: string

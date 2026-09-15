@@ -78,6 +78,8 @@ export function AdminCommandCenter() {
     selectedShipment,
     updateShipmentProgress,
     updateShipmentStatus,
+    togglePlayPause,
+    setSpeedMultiplier,
     addCheckpoint,
     toggleSealTamper,
     createShipment,
@@ -784,6 +786,8 @@ export function AdminCommandCenter() {
                     shipment={activeShipment}
                     showAdminControls={true}
                     onProgressChange={p => updateShipmentProgress(activeShipment.id, p)}
+                    onPlayPauseChange={playing => togglePlayPause(activeShipment.id, !playing)}
+                    onSpeedChange={spd => setSpeedMultiplier(activeShipment.id, spd)}
                   />
                 </div>
 

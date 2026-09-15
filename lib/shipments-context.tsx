@@ -16,6 +16,8 @@ interface ShipmentsContextType {
   selectedShipment: Shipment | undefined
   updateShipmentProgress: (id: string, progress: number) => void
   updateShipmentStatus: (id: string, status: string, statusType: Shipment['statusType']) => void
+  togglePlayPause: (id: string, isPausedOverride?: boolean) => Promise<void>
+  setSpeedMultiplier: (id: string, speed: 1 | 4 | 10) => Promise<void>
   addCheckpoint: (id: string, cp: Omit<Checkpoint, 'id'>) => void
   toggleSealTamper: (id: string) => void
   createShipment: (newShipment: Shipment) => void
@@ -109,6 +111,62 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Real-time server telemetry background sync (cross-device sync across phones/laptops)
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchServerTelemetry = async () => {
+      try {
+        const res = await fetch('/api/telemetry', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!data.success || !data.telemetry || !isMounted) return
+
+        const telemetryMap: Record<string, { progress: number; is_paused: number; speed_multiplier: number; status: string | null }> = data.telemetry
+
+        setShipments(prev =>
+          prev.map(s => {
+            const remote = telemetryMap[s.id]
+            if (!remote) return s
+
+            const isPaused = Boolean(remote.is_paused)
+            const speedMultiplier = remote.speed_multiplier ? Number(remote.speed_multiplier) : (s.speedMultiplier ?? 1)
+            const remoteProgress = Number(remote.progress)
+
+            const hasPauseChanged = s.isPaused !== isPaused
+            const hasSpeedChanged = s.speedMultiplier !== speedMultiplier
+            const hasSignificantProgressDiff = Math.abs(s.progress - remoteProgress) > 2.0
+
+            if (hasPauseChanged || hasSpeedChanged || (isPaused && hasSignificantProgressDiff) || Math.abs(s.progress - remoteProgress) > 5.0) {
+              return {
+                ...s,
+                isPaused,
+                speedMultiplier,
+                progress: isPaused ? remoteProgress : (hasSignificantProgressDiff ? remoteProgress : s.progress),
+                status: remote.status || s.status,
+              }
+            }
+
+            return {
+              ...s,
+              isPaused,
+              speedMultiplier,
+            }
+          })
+        )
+      } catch (err) {
+        // Silently tolerate temporary network blips
+      }
+    }
+
+    fetchServerTelemetry()
+    const interval = setInterval(fetchServerTelemetry, 1500)
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, [])
+
   // Sync to localStorage
   const persistShipments = (newShipments: Shipment[]) => {
     setShipments(newShipments)
@@ -146,9 +204,10 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(() => {
       setShipments(prev =>
         prev.map(s => {
-          if (s.statusType === 'delivered') return s
+          if (s.statusType === 'delivered' || s.isPaused) return s
 
-          const increment = (0.2 * simulationSettings.cruiseSpeed)
+          const speed = s.speedMultiplier ?? simulationSettings.cruiseSpeed
+          const increment = (0.2 * speed)
           let nextProgress = s.progress + increment
           if (nextProgress > 100) nextProgress = 100
 
@@ -163,10 +222,67 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval)
   }, [simulationSettings.isCruising, simulationSettings.cruiseSpeed])
 
-  const updateShipmentProgress = (id: string, newProgress: number) => {
+  const togglePlayPause = async (id: string, isPausedOverride?: boolean) => {
+    const target = shipments.find(s => s.id === id)
+    const newPaused = isPausedOverride !== undefined ? isPausedOverride : !(target?.isPaused ?? false)
+
     const updated = shipments.map(s => {
       if (s.id !== id) return s
-      const clamped = Math.max(0, Math.min(100, Math.round(newProgress)))
+      return {
+        ...s,
+        isPaused: newPaused,
+      }
+    })
+    persistShipments(updated)
+
+    try {
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: id,
+          isPaused: newPaused,
+          progress: target?.progress,
+          speedMultiplier: target?.speedMultiplier ?? 1,
+        }),
+      })
+    } catch (e) {
+      console.warn('Telemetry sync error:', e)
+    }
+  }
+
+  const setSpeedMultiplier = async (id: string, speed: 1 | 4 | 10) => {
+    const target = shipments.find(s => s.id === id)
+
+    const updated = shipments.map(s => {
+      if (s.id !== id) return s
+      return {
+        ...s,
+        speedMultiplier: speed,
+      }
+    })
+    persistShipments(updated)
+
+    try {
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: id,
+          speedMultiplier: speed,
+          isPaused: target?.isPaused ?? false,
+          progress: target?.progress,
+        }),
+      })
+    } catch (e) {
+      console.warn('Telemetry sync error:', e)
+    }
+  }
+
+  const updateShipmentProgress = (id: string, newProgress: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(newProgress)))
+    const updated = shipments.map(s => {
+      if (s.id !== id) return s
       return {
         ...s,
         progress: clamped,
@@ -175,19 +291,39 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       }
     })
     persistShipments(updated)
+
+    fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shipmentId: id,
+        progress: clamped,
+      }),
+    }).catch(e => console.warn('Telemetry broadcast error:', e))
   }
 
   const updateShipmentStatus = (id: string, status: string, statusType: Shipment['statusType']) => {
+    const newProgress = statusType === 'delivered' ? 100 : undefined
     const updated = shipments.map(s => {
       if (s.id !== id) return s
       return {
         ...s,
         status,
         statusType,
-        progress: statusType === 'delivered' ? 100 : s.progress,
+        progress: newProgress !== undefined ? newProgress : s.progress,
       }
     })
     persistShipments(updated)
+
+    fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shipmentId: id,
+        status,
+        progress: newProgress,
+      }),
+    }).catch(e => console.warn('Telemetry broadcast error:', e))
   }
 
   const addCheckpoint = (id: string, cpData: Omit<Checkpoint, 'id'>) => {
@@ -308,6 +444,8 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
         selectedShipment,
         updateShipmentProgress,
         updateShipmentStatus,
+        togglePlayPause,
+        setSpeedMultiplier,
         addCheckpoint,
         toggleSealTamper,
         createShipment,
