@@ -37,7 +37,10 @@ export function ClientNoticeModal({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       {/* Outer Card with Red/Gold Pulsing Border */}
-      <div className="relative w-full max-w-xl rounded-3xl border-2 border-amber-500/40 bg-[#0d0f15] shadow-2xl shadow-amber-500/10 overflow-hidden text-white font-sans ring-1 ring-amber-500/20">
+      <div
+        data-notice-modal="true"
+        className="relative w-full max-w-xl rounded-3xl border-2 border-amber-500/40 bg-[#0d0f15] shadow-2xl shadow-amber-500/10 overflow-hidden text-white font-sans ring-1 ring-amber-500/20"
+      >
         {/* Top High-Security Accent Bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-amber-600 via-[#dfba6c] to-amber-500 animate-pulse" />
 

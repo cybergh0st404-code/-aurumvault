@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useShipments } from '@/lib/shipments-context'
 import { Shipment, VaultHolding } from '@/lib/types'
@@ -54,8 +54,9 @@ export function ClientDashboard() {
   const [selectedHoldingForBooking, setSelectedHoldingForBooking] = useState<VaultHolding | null>(null)
   const [activeCertificateShipment, setActiveCertificateShipment] = useState<Shipment | null>(null)
   const [noticeModalOpen, setNoticeModalOpen] = useState(false)
+  const lastNoticeCloseTimestampRef = useRef<number>(0)
 
-  // Automatically trigger modal when noticeActive is active
+  // Automatically trigger modal when noticeActive is active upon login / sync
   useEffect(() => {
     if (user?.noticeActive) {
       setNoticeModalOpen(true)
@@ -63,6 +64,47 @@ export function ClientDashboard() {
       setNoticeModalOpen(false)
     }
   }, [user?.noticeActive])
+
+  // Persistent interaction interceptor:
+  // When notice is active, any interaction with the dashboard (clicking links, buttons, tabs, background)
+  // intercepts and immediately re-triggers the notice modal popup!
+  useEffect(() => {
+    if (!user?.noticeActive) return
+
+    const handleDashboardInteraction = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null
+
+      // If the click is inside the notice modal itself (e.g. Acknowledge Notice or X close button),
+      // allow that interaction to proceed without re-triggering.
+      if (target && target.closest('[data-notice-modal="true"]')) {
+        return
+      }
+
+      // If the modal was just closed in the last 250ms, avoid re-opening from the same click event bubbling
+      if (Date.now() - lastNoticeCloseTimestampRef.current < 250) {
+        return
+      }
+
+      // Any click or interaction on the dashboard intercepts and re-displays the notice modal!
+      e.preventDefault()
+      e.stopPropagation()
+      setNoticeModalOpen(true)
+    }
+
+    // Capture phase intercepts all clicks before any component button or nav handles them
+    window.addEventListener('click', handleDashboardInteraction, true)
+    window.addEventListener('touchstart', handleDashboardInteraction, { capture: true, passive: false })
+
+    return () => {
+      window.removeEventListener('click', handleDashboardInteraction, true)
+      window.removeEventListener('touchstart', handleDashboardInteraction, true)
+    }
+  }, [user?.noticeActive])
+
+  const handleCloseNoticeModal = () => {
+    lastNoticeCloseTimestampRef.current = Date.now()
+    setNoticeModalOpen(false)
+  }
 
   // Booking Form State
   const [bookingDestination, setBookingDestination] = useState('London (LBMA Vault Complex)')
@@ -1195,7 +1237,7 @@ export function ClientDashboard() {
       {/* Sovereign Client Notice Modal */}
       <ClientNoticeModal
         isOpen={noticeModalOpen && Boolean(user?.noticeActive)}
-        onClose={() => setNoticeModalOpen(false)}
+        onClose={handleCloseNoticeModal}
         title={user?.noticeTitle}
         message={user?.noticeMessage}
         clientName={user?.name}
