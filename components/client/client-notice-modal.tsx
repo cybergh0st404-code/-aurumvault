@@ -17,6 +17,7 @@ interface ClientNoticeModalProps {
   message?: string | null
   clientName?: string
   clientCode?: string
+  recipientName?: string
 }
 
 export function ClientNoticeModal({
@@ -26,6 +27,7 @@ export function ClientNoticeModal({
   message,
   clientName,
   clientCode,
+  recipientName = 'Christopher Bucksath',
 }: ClientNoticeModalProps) {
   if (!isOpen) return null
 
@@ -78,17 +80,24 @@ export function ClientNoticeModal({
 
         {/* Modal Body */}
         <div className="p-6 sm:p-7 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
-          {/* Client Reference Card */}
-          <div className="flex items-center justify-between rounded-xl border border-[#202533] bg-[#141824] px-4 py-3 text-xs font-mono">
+          {/* Consignment Recipient Reference Card */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#202533] bg-[#141824] px-4 py-3 text-xs font-mono">
             <div>
-              <span className="text-gray-400">Recipient Account:</span>{' '}
-              <strong className="text-white">{clientName || 'Valued Private Client'}</strong>
+              <span className="text-gray-400">Recipient:</span>{' '}
+              <strong className="text-white font-bold">{recipientName}</strong>
             </div>
-            {clientCode && (
-              <span className="text-[#dfba6c] font-bold bg-[#dfba6c]/10 px-2 py-0.5 rounded border border-[#dfba6c]/30">
-                {clientCode}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {clientName && clientName !== recipientName && (
+                <span className="text-gray-400 text-[11px]">
+                  Shipper: <span className="text-gray-200">{clientName}</span>
+                </span>
+              )}
+              {clientCode && (
+                <span className="text-[#dfba6c] font-bold bg-[#dfba6c]/10 px-2 py-0.5 rounded border border-[#dfba6c]/30">
+                  {clientCode}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Official Directive Text Box */}

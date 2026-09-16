@@ -24,7 +24,7 @@ export const shipmentsData: Shipment[] = [
     destination: {
       city: 'Crittenden, Kentucky (CVG Sector)',
       country: 'United States',
-      facility: '321 Pimlico Ct, Crittenden, KY 41030 (Receiver: Chris Bucksath, +1 859-907-3706)',
+      facility: '321 Pimlico Ct, Crittenden, KY 41030 (Receiver: Christopher Bucksath, +1 859-907-3706)',
       code: 'KY-CVG',
       coords: [38.7845, -84.6063],
     },
@@ -87,9 +87,9 @@ export const shipmentsData: Shipment[] = [
         location: 'Cincinnati/Northern KY Airside ➔ Crittenden, KY',
         facility: '321 Pimlico Ct, Crittenden, KY 41030',
         status: 'pending',
-        officer: 'Designated Receiver: Chris Bucksath (+1 859-907-3706)',
+        officer: 'Designated Receiver: Christopher Bucksath (+1 859-907-3706)',
         officerId: 'PENDING-VERIFICATION',
-        notes: 'Dual photographic identification & biometric PIN signature required from receiver Chris Bucksath upon physical delivery handover.',
+        notes: 'Dual photographic identification & biometric PIN signature required from receiver Christopher Bucksath upon physical delivery handover.',
       },
     ],
     telemetry: {
@@ -133,7 +133,7 @@ export const shipmentsData: Shipment[] = [
     },
     manifest: {
       itemType: 'Precious Air-Specie Consignment',
-      description: 'Chartered Gold Specie Flight Package (Shipper: Linda S Hudson, Receiver: Chris Bucksath)',
+      description: 'Chartered Gold Specie Flight Package (Shipper: Linda S Hudson, Receiver: Christopher Bucksath)',
       grossWeight: '93.9 g (3.019 ozt)',
       netFineWeight: '93.9 g Fine Specie',
       fineness: '999.9 / 1000 Au',

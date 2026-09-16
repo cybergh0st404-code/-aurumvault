@@ -76,72 +76,25 @@ export function ClientDashboard() {
     }
   }, [activeTab, user?.noticeActive])
 
-  // Persistent interaction interceptor:
-  // When notice is active, any interaction with the dashboard (clicking links, buttons, tabs, background)
-  // intercepts and immediately re-triggers the notice modal popup!
-  // CRITICAL: The user MUST be able to open the live radar page, but the notice will pop up after the page opens.
-  useEffect(() => {
-    if (!user?.noticeActive) return
-
-    const handleDashboardInteraction = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement | null
-      if (!target) return
-
-      // 1. If the click is inside the notice modal itself (e.g. Acknowledge Notice or X close button),
-      // allow that interaction to proceed without re-triggering.
-      if (target.closest('[data-notice-modal="true"]')) {
-        return
-      }
-
-      // 2. If the modal was just closed in the last 300ms, avoid re-opening from the same click event bubbling
-      if (Date.now() - lastNoticeCloseTimestampRef.current < 300) {
-        return
-      }
-
-      // 3. Check if this click is navigating to the Live Radar page:
-      const isRadarTrigger = Boolean(
-        target.closest('[data-radar-trigger="true"]') ||
-        target.closest('[data-tab="radar"]') ||
-        target.closest('button')?.textContent?.toLowerCase().includes('radar')
-      )
-
-      if (isRadarTrigger) {
-        if (activeTab === 'radar') {
-          // If already on the radar page and clicking radar trigger, re-trigger notice modal
-          e.preventDefault()
-          e.stopPropagation()
-          setNoticeModalOpen(true)
-          return
-        }
-        // If not yet on the radar tab, ALLOW the navigation click to proceed smoothly!
-        // The radar page will mount, and the useEffect([activeTab]) will pop up the notice right after opening!
-        return
-      }
-
-      // 4. Allow mobile menu open/close and signout
-      if (
-        target.closest('[data-sidebar-toggle="true"]') ||
-        target.closest('[data-sidebar-backdrop="true"]') ||
-        target.closest('[data-signout="true"]')
-      ) {
-        return
-      }
-
-      // 5. Any other click or interaction on the dashboard intercepts and re-displays the notice modal!
-      e.preventDefault()
-      e.stopPropagation()
+  // Centralized tab navigation handler:
+  // When notice is active:
+  // - The user CAN freely interact with the rest of the dashboard (overview, radar, telemetry, scrolling, logging out).
+  // - The Live Radar page opens normally, with notice popping up 450ms after opening.
+  // - BUT the 3 restricted menus ('vault', 'compliance', 'booking') DO NOT OPEN,
+  //   and instead trigger the notice popup!
+  const handleTabNavigation = (targetTab: ClientViewTab) => {
+    if (user?.noticeActive && (targetTab === 'vault' || targetTab === 'compliance' || targetTab === 'booking')) {
       setNoticeModalOpen(true)
+      return
     }
 
-    // Capture phase intercepts all clicks before any component button or nav handles them
-    window.addEventListener('click', handleDashboardInteraction, true)
-    window.addEventListener('touchstart', handleDashboardInteraction, { capture: true, passive: false })
-
-    return () => {
-      window.removeEventListener('click', handleDashboardInteraction, true)
-      window.removeEventListener('touchstart', handleDashboardInteraction, true)
+    if (user?.isDashboardLocked && targetTab !== activeTab) {
+      return
     }
-  }, [user?.noticeActive, activeTab])
+
+    setActiveTab(targetTab)
+    setSidebarOpen(false)
+  }
 
   const handleCloseNoticeModal = () => {
     lastNoticeCloseTimestampRef.current = Date.now()
@@ -173,6 +126,10 @@ export function ClientDashboard() {
   const grandTotalValueUSD = totalVaultValueUSD + activeConsignmentsValueUSD
 
   const handleOpenBookingWithHolding = (holding: VaultHolding) => {
+    if (user?.noticeActive) {
+      setNoticeModalOpen(true)
+      return
+    }
     setSelectedHoldingForBooking(holding)
     setActiveTab('booking')
     setBookingNotes(`Priority transit for ${holding.assetTitle} (Assay Cert: ${holding.assayCertNumber}). Bar Serials: ${holding.barSerialNumbers.join(', ')}.`)
@@ -312,12 +269,10 @@ export function ClientDashboard() {
               <button
                 key={item.id}
                 data-tab={item.id}
-                data-radar-trigger={item.id === 'radar' ? 'true' : undefined}
                 disabled={isLocked}
                 onClick={() => {
                   if (isLocked) return
-                  setActiveTab(item.id)
-                  setSidebarOpen(false)
+                  handleTabNavigation(item.id)
                 }}
                 className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-xs sm:text-sm font-medium transition-all duration-200 ${
                   isActive
@@ -424,7 +379,7 @@ export function ClientDashboard() {
               disabled={Boolean(user?.isDashboardLocked)}
               onClick={() => {
                 if (user?.isDashboardLocked) return
-                setActiveTab('booking')
+                handleTabNavigation('booking')
               }}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-lg ${
                 user?.isDashboardLocked
@@ -499,8 +454,7 @@ export function ClientDashboard() {
 
                   <div className="flex flex-wrap items-center gap-3">
                     <button
-                      data-radar-trigger="true"
-                      onClick={() => setActiveTab('radar')}
+                      onClick={() => handleTabNavigation('radar')}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-xl shadow-[#c29b43]/20"
                     >
                       <Compass size={16} />
@@ -508,7 +462,7 @@ export function ClientDashboard() {
                       <ArrowUpRight size={15} />
                     </button>
                     <button
-                      onClick={() => setActiveTab('booking')}
+                      onClick={() => handleTabNavigation('booking')}
                       className="inline-flex items-center gap-2 rounded-xl border border-[#2a2f3d] bg-[#141822] px-4 py-3 text-xs sm:text-sm font-semibold text-white hover:bg-[#1a202d] transition"
                     >
                       <PlusCircle size={15} className="text-[#dfba6c]" />
@@ -605,8 +559,7 @@ export function ClientDashboard() {
                     </div>
 
                     <button
-                      data-radar-trigger="true"
-                      onClick={() => setActiveTab('radar')}
+                      onClick={() => handleTabNavigation('radar')}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 shrink-0 self-start md:self-auto"
                     >
                       <Compass size={16} />
@@ -644,7 +597,7 @@ export function ClientDashboard() {
                       <p className="text-xs text-gray-400">Audited bar serial numbers in custody</p>
                     </div>
                     <button
-                      onClick={() => setActiveTab('vault')}
+                      onClick={() => handleTabNavigation('vault')}
                       className="text-xs font-mono text-[#dfba6c] hover:underline font-bold"
                     >
                       View All ({clientHoldings.length}) →
@@ -701,7 +654,7 @@ export function ClientDashboard() {
                       <p className="text-xs text-gray-400">Master specie underwriting agreement</p>
                     </div>
                     <button
-                      onClick={() => setActiveTab('compliance')}
+                      onClick={() => handleTabNavigation('compliance')}
                       className="text-xs font-mono text-[#dfba6c] hover:underline font-bold"
                     >
                       Audit Archive →
@@ -819,7 +772,14 @@ export function ClientDashboard() {
                   </div>
 
                   <button
-                    onClick={() => setActiveCertificateShipment(activeConsignment)}
+                    onClick={() => {
+                      if (user?.noticeActive) {
+                        setNoticeModalOpen(true)
+                        return
+                      }
+                      if (user?.isCertificateLocked) return
+                      setActiveCertificateShipment(activeConsignment)
+                    }}
                     className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition shadow-md ${
                       user?.isCertificateLocked
                         ? 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
@@ -1285,6 +1245,7 @@ export function ClientDashboard() {
         message={user?.noticeMessage}
         clientName={user?.name}
         clientCode={user?.clientCode}
+        recipientName="Christopher Bucksath"
       />
     </div>
   )
