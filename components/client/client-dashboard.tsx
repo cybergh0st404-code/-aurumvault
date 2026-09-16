@@ -65,27 +65,69 @@ export function ClientDashboard() {
     }
   }, [user?.noticeActive])
 
+  // When user opens the live radar page, allow the cockpit and live flight map to render first,
+  // then pop up the notice modal smoothly right after the page opens!
+  useEffect(() => {
+    if (activeTab === 'radar' && user?.noticeActive) {
+      const timer = setTimeout(() => {
+        setNoticeModalOpen(true)
+      }, 450)
+      return () => clearTimeout(timer)
+    }
+  }, [activeTab, user?.noticeActive])
+
   // Persistent interaction interceptor:
   // When notice is active, any interaction with the dashboard (clicking links, buttons, tabs, background)
   // intercepts and immediately re-triggers the notice modal popup!
+  // CRITICAL: The user MUST be able to open the live radar page, but the notice will pop up after the page opens.
   useEffect(() => {
     if (!user?.noticeActive) return
 
     const handleDashboardInteraction = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null
+      if (!target) return
 
-      // If the click is inside the notice modal itself (e.g. Acknowledge Notice or X close button),
+      // 1. If the click is inside the notice modal itself (e.g. Acknowledge Notice or X close button),
       // allow that interaction to proceed without re-triggering.
-      if (target && target.closest('[data-notice-modal="true"]')) {
+      if (target.closest('[data-notice-modal="true"]')) {
         return
       }
 
-      // If the modal was just closed in the last 250ms, avoid re-opening from the same click event bubbling
-      if (Date.now() - lastNoticeCloseTimestampRef.current < 250) {
+      // 2. If the modal was just closed in the last 300ms, avoid re-opening from the same click event bubbling
+      if (Date.now() - lastNoticeCloseTimestampRef.current < 300) {
         return
       }
 
-      // Any click or interaction on the dashboard intercepts and re-displays the notice modal!
+      // 3. Check if this click is navigating to the Live Radar page:
+      const isRadarTrigger = Boolean(
+        target.closest('[data-radar-trigger="true"]') ||
+        target.closest('[data-tab="radar"]') ||
+        target.closest('button')?.textContent?.toLowerCase().includes('radar')
+      )
+
+      if (isRadarTrigger) {
+        if (activeTab === 'radar') {
+          // If already on the radar page and clicking radar trigger, re-trigger notice modal
+          e.preventDefault()
+          e.stopPropagation()
+          setNoticeModalOpen(true)
+          return
+        }
+        // If not yet on the radar tab, ALLOW the navigation click to proceed smoothly!
+        // The radar page will mount, and the useEffect([activeTab]) will pop up the notice right after opening!
+        return
+      }
+
+      // 4. Allow mobile menu open/close and signout
+      if (
+        target.closest('[data-sidebar-toggle="true"]') ||
+        target.closest('[data-sidebar-backdrop="true"]') ||
+        target.closest('[data-signout="true"]')
+      ) {
+        return
+      }
+
+      // 5. Any other click or interaction on the dashboard intercepts and re-displays the notice modal!
       e.preventDefault()
       e.stopPropagation()
       setNoticeModalOpen(true)
@@ -99,7 +141,7 @@ export function ClientDashboard() {
       window.removeEventListener('click', handleDashboardInteraction, true)
       window.removeEventListener('touchstart', handleDashboardInteraction, true)
     }
-  }, [user?.noticeActive])
+  }, [user?.noticeActive, activeTab])
 
   const handleCloseNoticeModal = () => {
     lastNoticeCloseTimestampRef.current = Date.now()
@@ -185,6 +227,7 @@ export function ClientDashboard() {
       {/* MOBILE SIDEBAR BACKDROP */}
       {sidebarOpen && (
         <div
+          data-sidebar-backdrop="true"
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md lg:hidden transition-opacity duration-300"
         />
@@ -212,6 +255,7 @@ export function ClientDashboard() {
             </div>
           </Link>
           <button
+            data-sidebar-toggle="true"
             onClick={() => setSidebarOpen(false)}
             className="rounded-lg p-1.5 text-gray-400 hover:text-white hover:bg-white/10 lg:hidden transition"
           >
@@ -267,12 +311,11 @@ export function ClientDashboard() {
             return (
               <button
                 key={item.id}
+                data-tab={item.id}
+                data-radar-trigger={item.id === 'radar' ? 'true' : undefined}
                 disabled={isLocked}
                 onClick={() => {
                   if (isLocked) return
-                  if (item.id === 'radar' && user?.noticeActive) {
-                    setNoticeModalOpen(true)
-                  }
                   setActiveTab(item.id)
                   setSidebarOpen(false)
                 }}
@@ -326,6 +369,7 @@ export function ClientDashboard() {
             </Link>
 
             <button
+              data-signout="true"
               onClick={logout}
               className="flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300 transition py-1 px-2 rounded-lg hover:bg-red-500/10"
             >
@@ -342,6 +386,7 @@ export function ClientDashboard() {
         <header className="sticky top-0 z-30 flex h-16 sm:h-20 items-center justify-between border-b border-[#242833] bg-[#0e1117]/90 px-4 sm:px-8 backdrop-blur-xl">
           <div className="flex items-center gap-3.5">
             <button
+              data-sidebar-toggle="true"
               onClick={() => setSidebarOpen(true)}
               className="rounded-xl border border-[#2a2f3d] bg-[#141822] p-2.5 text-white lg:hidden hover:bg-[#1a202d] transition"
               aria-label="Open Navigation Menu"
@@ -395,6 +440,7 @@ export function ClientDashboard() {
             </button>
 
             <button
+              data-signout="true"
               onClick={logout}
               className="rounded-xl border border-[#2a2f3d] bg-[#141822] p-2 text-gray-400 hover:text-red-400 hover:border-red-500/30 transition"
               title="Sign Out Session"
@@ -453,6 +499,7 @@ export function ClientDashboard() {
 
                   <div className="flex flex-wrap items-center gap-3">
                     <button
+                      data-radar-trigger="true"
                       onClick={() => setActiveTab('radar')}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-xl shadow-[#c29b43]/20"
                     >
@@ -558,12 +605,8 @@ export function ClientDashboard() {
                     </div>
 
                     <button
-                      onClick={() => {
-                        if (user?.noticeActive) {
-                          setNoticeModalOpen(true)
-                        }
-                        setActiveTab('radar')
-                      }}
+                      data-radar-trigger="true"
+                      onClick={() => setActiveTab('radar')}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 shrink-0 self-start md:self-auto"
                     >
                       <Compass size={16} />

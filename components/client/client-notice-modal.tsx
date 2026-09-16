@@ -35,10 +35,12 @@ export function ClientNoticeModal({
     'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      data-notice-modal="true"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+    >
       {/* Outer Card with Red/Gold Pulsing Border */}
       <div
-        data-notice-modal="true"
         className="relative w-full max-w-xl rounded-3xl border-2 border-amber-500/40 bg-[#0d0f15] shadow-2xl shadow-amber-500/10 overflow-hidden text-white font-sans ring-1 ring-amber-500/20"
       >
         {/* Top High-Security Accent Bar */}
