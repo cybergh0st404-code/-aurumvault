@@ -104,7 +104,15 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       }
       const savedHoldings = localStorage.getItem(HOLDINGS_STORAGE_KEY)
       if (savedHoldings) {
-        setVaultHoldings(JSON.parse(savedHoldings))
+        const parsed: VaultHolding[] = JSON.parse(savedHoldings)
+        const mergedHoldings = defaultVaultHoldings.map(def => {
+          const saved = parsed.find(h => h.id === def.id)
+          return saved
+            ? { ...def, status: saved.status ?? def.status }
+            : def
+        })
+        const customHoldings = parsed.filter(h => !defaultVaultHoldings.some(def => def.id === h.id))
+        setVaultHoldings([...mergedHoldings, ...customHoldings])
       }
     } catch (e) {
       console.warn('LocalStorage unavailable:', e)
