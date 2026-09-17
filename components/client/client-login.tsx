@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { Shield, Lock, Key, CheckCircle2, ArrowRight, Building2, User, AlertCircle, Fingerprint, ShieldCheck, Sparkles } from 'lucide-react'
+import { Shield, Lock, Key, CheckCircle2, ArrowRight, Building2, User, AlertCircle, Fingerprint, ShieldCheck, Sparkles, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 
 interface ClientLoginProps {
@@ -13,6 +13,7 @@ export function ClientLogin({ onSuccess }: ClientLoginProps) {
   const { login, user } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -88,7 +89,7 @@ export function ClientLogin({ onSuccess }: ClientLoginProps) {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="e.g. client@private-trust.ch"
+                    placeholder="example@email.com"
                     required
                     className="w-full rounded-xl border border-[#242833] bg-[#161a24] py-3 pl-11 pr-4 text-sm text-white placeholder:text-gray-500 focus:border-[#dfba6c] focus:outline-none transition font-mono"
                   />
@@ -102,13 +103,22 @@ export function ClientLogin({ onSuccess }: ClientLoginProps) {
                 <div className="relative">
                   <Key size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Enter your confidential passkey"
                     required
-                    className="w-full rounded-xl border border-[#242833] bg-[#161a24] py-3 pl-11 pr-4 text-sm text-white placeholder:text-gray-500 focus:border-[#dfba6c] focus:outline-none transition font-mono"
+                    className="w-full rounded-xl border border-[#242833] bg-[#161a24] py-3 pl-11 pr-11 text-sm text-white placeholder:text-gray-500 focus:border-[#dfba6c] focus:outline-none transition font-mono"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition p-1"
+                    title={showPassword ? 'Hide password' : 'View password'}
+                    aria-label={showPassword ? 'Hide password' : 'View password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 

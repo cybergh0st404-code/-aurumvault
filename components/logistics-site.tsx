@@ -38,6 +38,8 @@ import {
   ExternalLink,
   LogOut,
   User,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 
@@ -695,6 +697,7 @@ function AdminLogin() {
   const { user, login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -744,7 +747,7 @@ function AdminLogin() {
             <input
               required
               type="email"
-              placeholder="chief.marshal@aurumvault.ch"
+              placeholder="admin@example.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
               className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-xs text-foreground outline-none focus:border-primary"
@@ -753,14 +756,25 @@ function AdminLogin() {
 
           <div>
             <label className="font-medium text-foreground block">Security Passcode / Token</label>
-            <input
-              required
-              type="password"
-              placeholder="Enter confidential passkey"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3 text-xs text-foreground outline-none focus:border-primary"
-            />
+            <div className="relative mt-1.5">
+              <input
+                required
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter confidential passkey"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="h-11 w-full rounded-xl border border-border bg-background pl-3 pr-10 text-xs text-foreground outline-none focus:border-primary"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(prev => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition p-1"
+                title={showPassword ? 'Hide password' : 'View password'}
+                aria-label={showPassword ? 'Hide password' : 'View password'}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
           </div>
 
           <button

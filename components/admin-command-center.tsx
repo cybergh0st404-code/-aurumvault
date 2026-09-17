@@ -49,6 +49,7 @@ import {
   Users,
   Bell,
   Eye,
+  EyeOff,
   ArrowUpRight,
   Edit3,
   Copy,
@@ -159,6 +160,7 @@ export function AdminCommandCenter() {
   const { user, role, logout, quickLogin, login } = useAuth()
   const [adminEmail, setAdminEmail] = useState('')
   const [adminKey, setAdminKey] = useState('')
+  const [showAdminKey, setShowAdminKey] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -742,7 +744,7 @@ export function AdminCommandCenter() {
               <input
                 required
                 type="email"
-                placeholder="chief.marshal@aurumvault.ch"
+                placeholder="admin@example.com"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
                 className="h-11 w-full rounded-xl border border-[#242833] bg-[#161a24] px-4 text-sm text-white font-mono focus:border-[#dfba6c] focus:outline-none transition"
@@ -753,14 +755,25 @@ export function AdminCommandCenter() {
               <label className="font-mono font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
                 Cryptographic Key / Hardware Token
               </label>
-              <input
-                required
-                type="password"
-                placeholder="Enter confidential passkey"
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                className="h-11 w-full rounded-xl border border-[#242833] bg-[#161a24] px-4 text-sm text-white font-mono focus:border-[#dfba6c] focus:outline-none transition"
-              />
+              <div className="relative">
+                <input
+                  required
+                  type={showAdminKey ? 'text' : 'password'}
+                  placeholder="Enter confidential passkey"
+                  value={adminKey}
+                  onChange={(e) => setAdminKey(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-[#242833] bg-[#161a24] pl-4 pr-11 text-sm text-white font-mono focus:border-[#dfba6c] focus:outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminKey(prev => !prev)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition p-1"
+                  title={showAdminKey ? 'Hide password' : 'View password'}
+                  aria-label={showAdminKey ? 'Hide password' : 'View password'}
+                >
+                  {showAdminKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             <button
