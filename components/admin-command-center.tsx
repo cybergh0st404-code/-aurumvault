@@ -48,6 +48,11 @@ import {
   Layers,
   Users,
   Bell,
+  Eye,
+  ArrowUpRight,
+  Edit3,
+  Copy,
+  CheckCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -80,6 +85,56 @@ const vaultHubOptions = [
   { city: 'Tokyo', country: 'Japan', code: 'TYO-GNZ', name: 'Tokyo Ginza Custody Vault', coords: [35.6762, 139.6503] as [number, number] },
 ]
 
+export interface NoticePreset {
+  label: string
+  icon: string
+  title: string
+  message: string
+  badge: string
+}
+
+export const NOTICE_PRESETS: NoticePreset[] = [
+  {
+    label: 'Doorstep Delivery Fee (US$3,400)',
+    icon: '🪙',
+    badge: 'FEE & SETTLEMENT',
+    title: 'SHIPMENT PROCESSING NOTICE',
+    message:
+      'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.',
+  },
+  {
+    label: 'Customs & Corridor Clearance Hold',
+    icon: '🛡️',
+    badge: 'CORRIDOR HOLD',
+    title: 'CUSTOMS & CORRIDOR CLEARANCE HOLD',
+    message:
+      'Consignment is held at customs inspection corridor pending mandatory sovereign import documentation endorsement. Air-specie transfer will resume immediately upon clearance release.',
+  },
+  {
+    label: 'Biometric & ID Re-verification',
+    icon: '🔏',
+    badge: 'SECURITY PROTOCOL',
+    title: 'BIOMETRIC RE-VERIFICATION DIRECTIVE',
+    message:
+      'Dual photographic identification & biometric PIN signature are mandatory from the designated receiver prior to physical armored carrier release at doorstep handover.',
+  },
+  {
+    label: 'Transit Corridor Weather Advisory',
+    icon: '✈️',
+    badge: 'AVIONICS ADVISORY',
+    title: 'TRANSIT CORRIDOR ADVISORY',
+    message:
+      'Consignment routing has been temporarily held under armed escort protocol due to meteorological conditions along the designated air-specie corridor. Avionics downlinks remain active.',
+  },
+  {
+    label: 'Custom Operational Directive',
+    icon: '✏️',
+    badge: 'CUSTOM DIRECTIVE',
+    title: 'OPERATIONAL DIRECTIVE',
+    message: '',
+  },
+]
+
 export function AdminCommandCenter() {
   const {
     shipments,
@@ -108,7 +163,7 @@ export function AdminCommandCenter() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const [activeTab, setActiveTab] = useState<'fleet' | 'dispatch' | 'quotes' | 'sensors' | 'users'>('fleet')
+  const [activeTab, setActiveTab] = useState<'fleet' | 'dispatch' | 'quotes' | 'sensors' | 'users' | 'notices'>('fleet')
   const [filter, setFilter] = useState('all')
 
   // SQLite User Management State
@@ -116,13 +171,46 @@ export function AdminCommandCenter() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [userActionFeedback, setUserActionFeedback] = useState<string | null>(null)
 
-  // Notice Dispatcher State
+  // Notice Dispatcher Modal State
   const [selectedUserForNotice, setSelectedUserForNotice] = useState<DbUser | null>(null)
   const [noticeTitleInput, setNoticeTitleInput] = useState('SHIPMENT PROCESSING NOTICE')
   const [noticeMessageInput, setNoticeMessageInput] = useState(
     'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
   )
   const [isSubmittingNotice, setIsSubmittingNotice] = useState(false)
+  const [modalPreviewMode, setModalPreviewMode] = useState<'edit' | 'preview'>('edit')
+
+  // Dedicated Directives & Notices Tab State
+  const clientUsers = dbUsers.filter(u => u.role === 'client')
+  const [deckSelectedUserId, setDeckSelectedUserId] = useState<string>('')
+  const deckSelectedUser = clientUsers.find(u => u.id === deckSelectedUserId) || clientUsers[0] || null
+
+  const [deckNoticeTitle, setDeckNoticeTitle] = useState('SHIPMENT PROCESSING NOTICE')
+  const [deckNoticeMessage, setDeckNoticeMessage] = useState(
+    'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
+  )
+  const [deckPreviewMode, setDeckPreviewMode] = useState<'banner' | 'modal'>('banner')
+  const [isSubmittingDeckNotice, setIsSubmittingDeckNotice] = useState(false)
+
+  // Synchronize deck notice form when selected client changes
+  useEffect(() => {
+    if (deckSelectedUser) {
+      setDeckNoticeTitle(deckSelectedUser.notice_title || 'SHIPMENT PROCESSING NOTICE')
+      setDeckNoticeMessage(
+        deckSelectedUser.notice_message ||
+          'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
+      )
+    }
+  }, [deckSelectedUser?.id, deckSelectedUser?.notice_title, deckSelectedUser?.notice_message])
+
+  // Default deck client selection when clients load
+  useEffect(() => {
+    if (!deckSelectedUserId && clientUsers.length > 0) {
+      setDeckSelectedUserId(clientUsers[0].id)
+    }
+  }, [clientUsers, deckSelectedUserId])
+
+  const activeNoticesCount = dbUsers.filter(u => Boolean(u.notice_active)).length
 
   const adminNavItems = [
     { id: 'fleet', label: 'Active Fleet & Radar', icon: <Activity size={18} />, badge: shipments.length },
@@ -130,6 +218,7 @@ export function AdminCommandCenter() {
     { id: 'quotes', label: 'Client Quotation Dossiers', icon: <FileText size={18} />, badge: quoteInquiries.length },
     { id: 'sensors', label: 'Vault Radar & Sensor Health', icon: <Radio size={18} /> },
     { id: 'users', label: 'User Credentials & Security', icon: <Users size={18} />, badge: dbUsers.length > 0 ? dbUsers.length : undefined },
+    { id: 'notices', label: 'Directives & Notices', icon: <Bell size={18} />, badge: activeNoticesCount > 0 ? activeNoticesCount : undefined },
   ]
 
   // New User Form State
@@ -266,6 +355,16 @@ export function AdminCommandCenter() {
       u.notice_message ||
         'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
     )
+    setModalPreviewMode('edit')
+  }
+
+  const handleSelectUserForNoticeModal = (u: DbUser) => {
+    setSelectedUserForNotice(u)
+    setNoticeTitleInput(u.notice_title || 'SHIPMENT PROCESSING NOTICE')
+    setNoticeMessageInput(
+      u.notice_message ||
+        'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.'
+    )
   }
 
   const handleSaveNotice = async (activate: boolean) => {
@@ -287,11 +386,11 @@ export function AdminCommandCenter() {
       if (data.success) {
         setUserActionFeedback(
           activate
-            ? `✓ Notice directive activated and dispatched to ${selectedUserForNotice.name}.`
+            ? `✓ Notice directive activated and broadcasted to ${selectedUserForNotice.name}.`
             : `✓ Notice directive deactivated and withdrawn for ${selectedUserForNotice.name}.`
         )
         setSelectedUserForNotice(null)
-        fetchUsers()
+        await fetchUsers()
         setTimeout(() => setUserActionFeedback(null), 4000)
       } else {
         alert(data.error || 'Failed to update user notice.')
@@ -301,6 +400,75 @@ export function AdminCommandCenter() {
       alert('Network error updating user notice.')
     } finally {
       setIsSubmittingNotice(false)
+    }
+  }
+
+  const handleSaveDeckNotice = async (activate: boolean) => {
+    if (!deckSelectedUser) return
+    setIsSubmittingDeckNotice(true)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: deckSelectedUser.id,
+          action: 'set_notice',
+          noticeActive: activate,
+          noticeTitle: deckNoticeTitle.trim() || 'SHIPMENT PROCESSING NOTICE',
+          noticeMessage: deckNoticeMessage.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUserActionFeedback(
+          activate
+            ? `✓ Operational notice activated & broadcasted to ${deckSelectedUser.name}.`
+            : `✓ Operational notice withdrawn & deactivated for ${deckSelectedUser.name}.`
+        )
+        await fetchUsers()
+        setTimeout(() => setUserActionFeedback(null), 4000)
+      } else {
+        alert(data.error || 'Failed to update user notice.')
+      }
+    } catch (err) {
+      console.error('Failed to save deck notice:', err)
+      alert('Network error updating user notice.')
+    } finally {
+      setIsSubmittingDeckNotice(false)
+    }
+  }
+
+  const handleQuickToggleNotice = async (u: DbUser) => {
+    const nextVal = !Boolean(u.notice_active)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: u.id,
+          action: 'set_notice',
+          noticeActive: nextVal,
+          noticeTitle: u.notice_title || 'SHIPMENT PROCESSING NOTICE',
+          noticeMessage:
+            u.notice_message ||
+            'A total fee of US$3,400 is stated for final inspection, processing, and completion of doorstep delivery of the gold consignment. Payment instructions are to be issued separately.',
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUserActionFeedback(
+          nextVal
+            ? `✓ Notice activated for ${u.name}.`
+            : `✓ Notice deactivated for ${u.name}.`
+        )
+        await fetchUsers()
+        setTimeout(() => setUserActionFeedback(null), 4000)
+      } else {
+        alert(data.error || 'Failed to toggle notice.')
+      }
+    } catch (err) {
+      console.error('Failed to toggle notice:', err)
+      alert('Network error communicating with Federal Auth Gateway.')
     }
   }
 
@@ -2019,24 +2187,486 @@ export function AdminCommandCenter() {
             </div>
           </div>
         )}
+
+        {/* TAB 6: DIRECTIVES & OPERATIONAL NOTICES */}
+        {activeTab === 'notices' && (
+          <div className="space-y-8">
+            {/* Header banner */}
+            <div className="rounded-3xl border border-[#242833] bg-[#11141c] p-6 sm:p-8 shadow-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#dfba6c] mb-1">
+                  <Bell size={16} className="text-amber-400" />
+                  <span>Sovereign Client Interception Directives</span>
+                </div>
+                <h2 className="font-serif text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                  Operational Notices & Directives Command
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-400 font-mono mt-1">
+                  Authoritative dispatch channel to manage and push real-time alerts, settlement fees, customs holds, and handover directives to any client.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-mono">
+                  <span className="text-amber-300 font-bold">{activeNoticesCount}</span>
+                  <span className="text-gray-400 ml-1.5">Active Directives</span>
+                </div>
+                <div className="rounded-2xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2 text-xs font-mono">
+                  <span className="text-white font-bold">{clientUsers.length}</span>
+                  <span className="text-gray-400 ml-1.5">Enrolled Clients</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Workbench: Two-Column Editor + Real-Time Client Preview */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Client Selector, Presets & Directive Editor */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="rounded-3xl border border-[#242833] bg-[#11141c] p-6 sm:p-7 shadow-2xl space-y-6">
+                  <div className="border-b border-[#242833] pb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Edit3 size={18} className="text-[#dfba6c]" />
+                      <h3 className="font-serif font-bold text-white text-base">Directive Composition Workbench</h3>
+                    </div>
+                    {deckSelectedUser && (
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
+                          Boolean(deckSelectedUser.notice_active)
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 ring-1 ring-amber-500/20'
+                            : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                        }`}
+                      >
+                        {Boolean(deckSelectedUser.notice_active) ? '● BROADCASTING LIVE' : '○ INACTIVE / DRAFT'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Target Client Selector */}
+                  <div>
+                    <label className="font-mono font-bold text-xs text-gray-300 block mb-2">
+                      Target Client Account
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {clientUsers.map(u => {
+                        const isSelected = deckSelectedUser?.id === u.id
+                        const hasActiveNotice = Boolean(u.notice_active)
+
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => setDeckSelectedUserId(u.id)}
+                            className={`text-left p-3.5 rounded-2xl border transition relative ${
+                              isSelected
+                                ? 'border-[#dfba6c] bg-[#1a1f2c] ring-1 ring-[#dfba6c]/40 shadow-lg shadow-[#dfba6c]/5'
+                                : 'border-[#242833] bg-[#141824] hover:border-[#2f3547]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-sm text-white truncate">{u.name}</span>
+                              {hasActiveNotice && (
+                                <span
+                                  className="size-2 rounded-full bg-amber-400 animate-ping shrink-0"
+                                  title="Notice Active"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mt-1">
+                              <span>{u.client_code || 'CLIENT'}</span>
+                              <span className={hasActiveNotice ? 'text-amber-400 font-bold' : 'text-gray-500'}>
+                                {hasActiveNotice ? 'Notice: Active' : 'No Notice'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-gray-400 truncate mt-1">{u.email}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Templates */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="font-mono font-bold text-xs text-gray-300">
+                        Operational Presets & Templates
+                      </label>
+                      <span className="text-[10px] font-mono text-gray-400">1-Click Apply</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {NOTICE_PRESETS.map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setDeckNoticeTitle(preset.title)
+                            setDeckNoticeMessage(preset.message)
+                          }}
+                          className="text-left rounded-xl border border-[#242833] bg-[#141824] p-3 text-xs text-gray-300 hover:border-[#dfba6c]/50 hover:bg-[#181d2c] transition group"
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-white group-hover:text-[#dfba6c] transition">
+                            <span>{preset.icon}</span>
+                            <span className="truncate">{preset.label}</span>
+                          </div>
+                          <span className="text-[9px] font-mono text-gray-400 block mt-1 uppercase tracking-wider">
+                            {preset.badge}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Form: Directive Headline / Title */}
+                  <div>
+                    <label className="font-mono font-bold text-xs text-gray-300 block mb-1.5">
+                      Directive Headline / Title
+                    </label>
+                    <input
+                      type="text"
+                      value={deckNoticeTitle}
+                      onChange={e => setDeckNoticeTitle(e.target.value)}
+                      placeholder="e.g. SHIPMENT PROCESSING NOTICE"
+                      className="h-11 w-full rounded-xl border border-[#242833] bg-[#161a24] px-4 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Form: Directive Body / Fee & Processing Text */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-mono font-bold text-xs text-gray-300">
+                        Directive Body / Instructions & Fee Details
+                      </label>
+                      <span className="text-[10px] font-mono text-gray-400">
+                        {deckNoticeMessage.length} characters
+                      </span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={deckNoticeMessage}
+                      onChange={e => setDeckNoticeMessage(e.target.value)}
+                      placeholder="Enter directive instructions, fee amounts, and doorstep handover conditions..."
+                      className="w-full rounded-2xl border border-[#242833] bg-[#161a24] p-4 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-sans leading-relaxed resize-y"
+                    />
+                    <p className="text-[11px] text-gray-400 font-mono mt-1.5">
+                      When active, this directive intercepts client access to vault holdings, custody certificates, and flight booking, popping up smoothly upon radar inspection.
+                    </p>
+                  </div>
+
+                  {/* Action Deck */}
+                  <div className="border-t border-[#242833] pt-5 flex flex-wrap items-center justify-between gap-3">
+                    {deckSelectedUser && Boolean(deckSelectedUser.notice_active) ? (
+                      <button
+                        type="button"
+                        disabled={isSubmittingDeckNotice}
+                        onClick={() => handleSaveDeckNotice(false)}
+                        className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-mono font-bold text-red-300 hover:bg-red-500/20 transition disabled:opacity-50"
+                      >
+                        {isSubmittingDeckNotice ? 'Deactivating...' : 'Withdraw / Deactivate Directive'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isSubmittingDeckNotice}
+                        onClick={() => handleSaveDeckNotice(false)}
+                        className="rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2.5 text-xs font-mono text-gray-300 hover:bg-[#1f2433] transition disabled:opacity-50"
+                      >
+                        Save as Inactive Draft
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isSubmittingDeckNotice}
+                        onClick={() => handleSaveDeckNotice(true)}
+                        className="rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-6 py-2.5 text-xs font-mono font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Bell size={14} />
+                        <span>
+                          {isSubmittingDeckNotice
+                            ? 'Broadcasting...'
+                            : deckSelectedUser && Boolean(deckSelectedUser.notice_active)
+                            ? 'Save & Update Live Directive'
+                            : 'Activate & Broadcast Directive'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Real-Time Client Simulation & Live Preview */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="rounded-3xl border border-[#242833] bg-[#11141c] p-6 sm:p-7 shadow-2xl space-y-5">
+                  <div className="border-b border-[#242833] pb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Eye size={18} className="text-[#dfba6c]" />
+                      <h3 className="font-serif font-bold text-white text-base">Client Screen Live Preview</h3>
+                    </div>
+                    <div className="flex items-center gap-1 bg-[#141824] p-1 rounded-xl border border-[#242833]">
+                      <button
+                        type="button"
+                        onClick={() => setDeckPreviewMode('banner')}
+                        className={`px-3 py-1 text-[11px] font-mono rounded-lg transition ${
+                          deckPreviewMode === 'banner'
+                            ? 'bg-[#dfba6c] text-black font-bold shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Radar Banner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeckPreviewMode('modal')}
+                        className={`px-3 py-1 text-[11px] font-mono rounded-lg transition ${
+                          deckPreviewMode === 'modal'
+                            ? 'bg-[#dfba6c] text-black font-bold shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Urgent Modal
+                      </button>
+                    </div>
+                  </div>
+
+                  {deckPreviewMode === 'banner' ? (
+                    <div className="space-y-4">
+                      <p className="text-[11px] font-mono text-gray-400">
+                        Exact warning banner displayed on client's Live Sovereign Radar Cockpit:
+                      </p>
+
+                      {/* Mock Radar Banner */}
+                      <div className="rounded-3xl border-2 border-amber-500/40 bg-amber-950/25 p-5 shadow-2xl flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="size-9 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                            <AlertTriangle size={18} className="animate-pulse" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 text-[8px] font-mono font-bold text-amber-300 uppercase tracking-wider">
+                                CARGO TRANSIT RESTRICTION
+                              </span>
+                              <span className="font-mono text-xs font-bold text-white">
+                                {deckNoticeTitle || 'SHIPMENT PROCESSING NOTICE'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-300 font-medium line-clamp-3 leading-relaxed">
+                              {deckNoticeMessage || 'Enter directive text to preview here...'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end pt-1">
+                          <div className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-3 py-1.5 text-[10px] font-bold text-black font-mono shadow">
+                            <span>Inspect Full Directive</span>
+                            <ArrowUpRight size={12} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-[11px] font-mono text-gray-400">
+                        Exact high-security modal intercepting client navigation:
+                      </p>
+
+                      {/* Mock Modal Preview */}
+                      <div className="rounded-3xl border-2 border-amber-500/40 bg-[#0d0f15] shadow-2xl overflow-hidden text-white font-sans ring-1 ring-amber-500/20">
+                        <div className="h-1 w-full bg-gradient-to-r from-amber-600 via-[#dfba6c] to-amber-500 animate-pulse" />
+                        <div className="p-4 border-b border-[#242833] bg-[#12151e]/80 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="size-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                              <AlertTriangle size={16} />
+                            </div>
+                            <div>
+                              <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[8px] font-mono font-bold text-amber-300">
+                                URGENT OPERATIONAL NOTICE
+                              </span>
+                              <h4 className="font-serif text-xs font-bold text-white mt-0.5">
+                                {deckNoticeTitle || 'SHIPMENT PROCESSING NOTICE'}
+                              </h4>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-mono text-gray-400">
+                            REF: AV-NOTIF-{deckSelectedUser?.client_code || 'GENEVA'}
+                          </span>
+                        </div>
+
+                        <div className="p-4 space-y-3 text-xs">
+                          <div className="flex items-center justify-between rounded-lg border border-[#202533] bg-[#141824] px-3 py-2 text-[10px] font-mono">
+                            <span className="text-gray-400">
+                              Client: <strong className="text-white">{deckSelectedUser?.name || 'Client'}</strong>
+                            </span>
+                            <span className="text-[#dfba6c] font-bold">
+                              {deckSelectedUser?.client_code || 'CLIENT'}
+                            </span>
+                          </div>
+
+                          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-1.5 relative overflow-hidden">
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-amber-400 uppercase">
+                              <FileText size={12} />
+                              <span>Directive Text</span>
+                            </div>
+                            <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-line">
+                              {deckNoticeMessage || 'Enter directive text to preview here...'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-2.5 text-[10px] text-gray-300 font-mono flex items-center gap-2">
+                            <ShieldAlert size={14} className="text-red-400 shrink-0" />
+                            <span>Doorstep delivery & avionics downlinks hold until settlement.</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 border-t border-[#242833] bg-[#0f121a] flex items-center justify-between">
+                          <span className="text-[9px] font-mono text-gray-500">AurumVault Geneva HQ</span>
+                          <div className="rounded-lg bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-3 py-1.5 text-[10px] font-bold text-black font-mono">
+                            Acknowledge Notice
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl border border-[#242833] bg-[#0e1117] p-4 text-[11px] font-mono text-gray-400 space-y-2">
+                    <div className="flex items-center gap-2 text-white font-bold">
+                      <ShieldCheck size={14} className="text-emerald-400" />
+                      <span>Zero-Latency Synchronized Downlink</span>
+                    </div>
+                    <p className="text-[10px] leading-relaxed">
+                      Saving or broadcasting updates the SQLite database record immediately. The client's active session poller captures notice changes in real-time within 2 seconds without requiring manual reload.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* All Clients Master Directives Ledger Table */}
+            <div className="rounded-3xl border border-[#242833] bg-[#11141c] shadow-2xl overflow-hidden">
+              <div className="border-b border-[#242833] p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-white">
+                    Client Directives & Notice Authorization Ledger
+                  </h3>
+                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                    Real-time status of all client accounts with quick editor switching.
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-gray-300 bg-[#161a24] border border-[#242833] px-3 py-1.5 rounded-xl">
+                  {clientUsers.length} Registered Client Accounts
+                </span>
+              </div>
+
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#0e1117] text-gray-400 uppercase tracking-wider text-[10px] font-mono border-b border-[#242833]">
+                    <tr>
+                      <th className="p-4">Client Identity</th>
+                      <th className="p-4">Notice Status</th>
+                      <th className="p-4">Directive Headline</th>
+                      <th className="p-4">Message Preview</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e2330]">
+                    {clientUsers.map(u => {
+                      const isActive = Boolean(u.notice_active)
+                      const isSelected = deckSelectedUser?.id === u.id
+
+                      return (
+                        <tr
+                          key={u.id}
+                          className={`hover:bg-[#161a24] transition ${
+                            isSelected ? 'bg-[#dfba6c]/5' : ''
+                          }`}
+                        >
+                          <td className="p-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-8 rounded-xl bg-gradient-to-br from-[#dfba6c] to-[#a6802e] text-black font-bold flex items-center justify-center text-xs shrink-0">
+                                {u.avatar_initials}
+                              </div>
+                              <div>
+                                <p className="font-bold text-white text-sm">{u.name}</p>
+                                <p className="text-[11px] text-gray-400 font-mono">{u.email}</p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="p-4">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-bold ${
+                                isActive
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/20'
+                                  : 'bg-[#161a24] text-gray-400 border border-[#242833]'
+                              }`}
+                            >
+                              <Bell size={10} className={isActive ? 'text-amber-400 animate-bounce' : 'text-gray-500'} />
+                              {isActive ? 'ACTIVE (BROADCASTING)' : 'INACTIVE / NONE'}
+                            </span>
+                          </td>
+
+                          <td className="p-4 font-mono font-bold text-xs text-white max-w-xs truncate">
+                            {u.notice_title || <span className="text-gray-500 font-normal italic">No Title Stored</span>}
+                          </td>
+
+                          <td className="p-4 text-gray-300 max-w-md truncate font-sans text-xs">
+                            {u.notice_message || <span className="text-gray-500 italic">No notice directive configured</span>}
+                          </td>
+
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeckSelectedUserId(u.id)
+                                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-[#2a2f3d] bg-[#161a24] px-2.5 py-1.5 text-[11px] font-mono text-gray-300 hover:border-[#dfba6c] hover:text-white transition"
+                              >
+                                <Edit3 size={12} />
+                                <span>Edit Directive</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleQuickToggleNotice(u)}
+                                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold transition border ${
+                                  isActive
+                                    ? 'bg-red-500/10 text-red-300 border-red-500/30 hover:bg-red-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                                }`}
+                              >
+                                {isActive ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
         </main>
       </div>
 
       {/* Admin Notice Dispatch Modal */}
       {selectedUserForNotice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-3xl border border-[#2a2f3d] bg-[#11141c] p-6 sm:p-7 shadow-2xl text-white font-sans ring-1 ring-amber-500/20 space-y-5">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl rounded-3xl border border-[#2a2f3d] bg-[#11141c] p-6 sm:p-7 shadow-2xl text-white font-sans ring-1 ring-amber-500/20 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-[#242833] pb-4">
               <div className="flex items-center gap-3">
-                <div className="size-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-                  <Bell size={20} />
+                <div className="size-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-inner">
+                  <Bell size={22} className="animate-pulse" />
                 </div>
                 <div>
                   <h3 className="font-serif text-lg font-bold text-white">
-                    Dispatch Client Notification Directive
+                    Client Directive & Notice Dispatcher
                   </h3>
                   <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                    Target: <strong className="text-white">{selectedUserForNotice.name}</strong> ({selectedUserForNotice.email})
+                    Live operational hold, fee instructions & dashboard interception
                   </p>
                 </div>
               </div>
@@ -2048,55 +2678,166 @@ export function AdminCommandCenter() {
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="font-mono font-bold text-gray-300 block mb-1">
-                  Notice Headline / Directive Title
+            {/* Target Client Switcher Dropdown */}
+            <div className="rounded-2xl border border-[#242833] bg-[#161a24] p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-mono text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
+                  <Users size={13} className="text-[#dfba6c]" />
+                  <span>Selected Client Account</span>
                 </label>
-                <input
-                  type="text"
-                  value={noticeTitleInput}
-                  onChange={e => setNoticeTitleInput(e.target.value)}
-                  placeholder="e.g. SHIPMENT PROCESSING NOTICE"
-                  className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono font-bold"
-                />
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                    Boolean(selectedUserForNotice.notice_active)
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                      : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                  }`}
+                >
+                  {Boolean(selectedUserForNotice.notice_active) ? '● NOTICE ACTIVE' : '○ NO ACTIVE NOTICE'}
+                </span>
               </div>
-
-              <div>
-                <label className="font-mono font-bold text-gray-300 block mb-1">
-                  Directive Body / Fee & Processing Text
-                </label>
-                <textarea
-                  rows={4}
-                  value={noticeMessageInput}
-                  onChange={e => setNoticeMessageInput(e.target.value)}
-                  placeholder="Enter notice text that will persistently appear on client screen..."
-                  className="w-full rounded-xl border border-[#242833] bg-[#161a24] p-3 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-sans leading-relaxed"
-                />
-                <p className="text-[10px] text-gray-400 font-mono mt-1">
-                  This notice will persistently pop up on the client dashboard and intercept live radar tracking.
-                </p>
-              </div>
-
-              {Boolean(selectedUserForNotice.notice_active) && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 font-mono flex items-center justify-between">
-                  <span>● Notice is currently ACTIVE on recipient account.</span>
-                </div>
-              )}
+              <select
+                value={selectedUserForNotice.id}
+                onChange={e => {
+                  const found = dbUsers.find(u => u.id === e.target.value)
+                  if (found) {
+                    handleSelectUserForNoticeModal(found)
+                  }
+                }}
+                className="w-full rounded-xl border border-[#2a2f3d] bg-[#0f121a] px-3.5 py-2 text-xs font-mono font-bold text-white focus:border-[#dfba6c] outline-none cursor-pointer"
+              >
+                {clientUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.client_code || u.email} {Boolean(u.notice_active) ? '★ (Active Notice)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
+            {/* Quick Preset Buttons */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="font-mono text-[11px] font-bold text-gray-300">
+                  Quick Presets
+                </label>
+                <div className="flex items-center gap-1 bg-[#161a24] p-0.5 rounded-lg border border-[#242833]">
+                  <button
+                    type="button"
+                    onClick={() => setModalPreviewMode('edit')}
+                    className={`px-2.5 py-0.5 text-[10px] font-mono rounded ${
+                      modalPreviewMode === 'edit'
+                        ? 'bg-[#dfba6c] text-black font-bold'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPreviewMode('preview')}
+                    className={`px-2.5 py-0.5 text-[10px] font-mono rounded ${
+                      modalPreviewMode === 'preview'
+                        ? 'bg-[#dfba6c] text-black font-bold'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Preview
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {NOTICE_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setNoticeTitleInput(preset.title)
+                      setNoticeMessageInput(preset.message)
+                    }}
+                    className="rounded-lg border border-[#242833] bg-[#161a24] px-2.5 py-1 text-[11px] font-mono text-gray-300 hover:border-[#dfba6c] hover:text-white transition flex items-center gap-1"
+                  >
+                    <span>{preset.icon}</span>
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Body / Form or Live Preview */}
+            {modalPreviewMode === 'edit' ? (
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="font-mono font-bold text-gray-300 block mb-1">
+                    Notice Headline / Directive Title
+                  </label>
+                  <input
+                    type="text"
+                    value={noticeTitleInput}
+                    onChange={e => setNoticeTitleInput(e.target.value)}
+                    placeholder="e.g. SHIPMENT PROCESSING NOTICE"
+                    className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-mono font-bold text-gray-300 block mb-1">
+                    Directive Body / Fee & Processing Text
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={noticeMessageInput}
+                    onChange={e => setNoticeMessageInput(e.target.value)}
+                    placeholder="Enter notice text that will persistently appear on client screen..."
+                    className="w-full rounded-xl border border-[#242833] bg-[#161a24] p-3 text-xs text-white placeholder:text-gray-500 focus:border-[#dfba6c] outline-none transition font-sans leading-relaxed"
+                  />
+                  <p className="text-[10px] text-gray-400 font-mono mt-1">
+                    This directive will persistently intercept the client dashboard upon radar access and lock restricted tabs until acknowledged or lifted.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-[11px] font-mono text-gray-400">
+                  Client Screen Modal Preview:
+                </p>
+                <div className="rounded-2xl border border-amber-500/30 bg-[#0d0f15] p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#242833] pb-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={15} className="text-amber-400" />
+                      <span className="font-mono font-bold text-xs text-white">
+                        {noticeTitleInput || 'SHIPMENT PROCESSING NOTICE'}
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-mono text-gray-400">
+                      REF: AV-NOTIF-{selectedUserForNotice.client_code || 'GENEVA'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-line bg-[#141824] p-3 rounded-xl border border-[#202533]">
+                    {noticeMessageInput || 'Enter directive text...'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Footer Actions */}
             <div className="border-t border-[#242833] pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
               {Boolean(selectedUserForNotice.notice_active) ? (
                 <button
                   type="button"
                   disabled={isSubmittingNotice}
                   onClick={() => handleSaveNotice(false)}
-                  className="w-full sm:w-auto rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-mono font-bold text-red-300 hover:bg-red-500/20 transition"
+                  className="w-full sm:w-auto rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-mono font-bold text-red-300 hover:bg-red-500/20 transition disabled:opacity-50"
                 >
                   Withdraw / Deactivate Notice
                 </button>
               ) : (
-                <div />
+                <button
+                  type="button"
+                  disabled={isSubmittingNotice}
+                  onClick={() => handleSaveNotice(false)}
+                  className="w-full sm:w-auto rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2 text-xs font-mono text-gray-400 hover:bg-[#1f2433] transition disabled:opacity-50"
+                >
+                  Save as Inactive Draft
+                </button>
               )}
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -2105,16 +2846,22 @@ export function AdminCommandCenter() {
                   onClick={() => setSelectedUserForNotice(null)}
                   className="w-full sm:w-auto rounded-xl border border-[#2a2f3d] bg-[#161a24] px-4 py-2 text-xs font-mono text-gray-300 hover:bg-[#1f2433] transition"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="button"
                   disabled={isSubmittingNotice}
                   onClick={() => handleSaveNotice(true)}
-                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-2 text-xs font-mono font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-1.5"
+                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-2 text-xs font-mono font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   <Bell size={13} />
-                  <span>{isSubmittingNotice ? 'Broadcasting...' : 'Activate & Broadcast Notice'}</span>
+                  <span>
+                    {isSubmittingNotice
+                      ? 'Broadcasting...'
+                      : Boolean(selectedUserForNotice.notice_active)
+                      ? 'Save & Update Live Notice'
+                      : 'Activate & Broadcast Notice'}
+                  </span>
                 </button>
               </div>
             </div>

@@ -56,14 +56,21 @@ export function ClientDashboard() {
   const [noticeModalOpen, setNoticeModalOpen] = useState(false)
   const lastNoticeCloseTimestampRef = useRef<number>(0)
 
-  // Automatically trigger modal when noticeActive is active upon login / sync
+  const prevNoticeFingerprintRef = useRef<string | null>(null)
+
+  // Automatically trigger modal when noticeActive is active or notice content updates
   useEffect(() => {
     if (user?.noticeActive) {
-      setNoticeModalOpen(true)
+      const fingerprint = `${user.noticeActive}-${user.noticeTitle || ''}-${user.noticeMessage || ''}`
+      if (prevNoticeFingerprintRef.current !== fingerprint) {
+        setNoticeModalOpen(true)
+        prevNoticeFingerprintRef.current = fingerprint
+      }
     } else {
       setNoticeModalOpen(false)
+      prevNoticeFingerprintRef.current = null
     }
-  }, [user?.noticeActive])
+  }, [user?.noticeActive, user?.noticeTitle, user?.noticeMessage])
 
   // When user opens the live radar page, allow the cockpit and live flight map to render first,
   // then pop up the notice modal smoothly right after the page opens!
@@ -1238,15 +1245,25 @@ export function ClientDashboard() {
       )}
 
       {/* Sovereign Client Notice Modal */}
-      <ClientNoticeModal
-        isOpen={noticeModalOpen && Boolean(user?.noticeActive)}
-        onClose={handleCloseNoticeModal}
-        title={user?.noticeTitle}
-        message={user?.noticeMessage}
-        clientName={user?.name}
-        clientCode={user?.clientCode}
-        recipientName="Christopher Bucksath"
-      />
+      {(() => {
+        let recipient = user?.name || 'Christopher Bucksath'
+        if (activeConsignment?.destination?.facility && activeConsignment.destination.facility.includes('Receiver:')) {
+          const match = activeConsignment.destination.facility.match(/Receiver:\s*([^,)]+)/i)
+          if (match && match[1]) recipient = match[1].trim()
+        }
+
+        return (
+          <ClientNoticeModal
+            isOpen={noticeModalOpen && Boolean(user?.noticeActive)}
+            onClose={handleCloseNoticeModal}
+            title={user?.noticeTitle}
+            message={user?.noticeMessage}
+            clientName={user?.name}
+            clientCode={user?.clientCode}
+            recipientName={recipient}
+          />
+        )
+      })()}
     </div>
   )
 }

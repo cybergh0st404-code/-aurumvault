@@ -61,7 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               prev.id !== data.user.id ||
               prev.isDashboardLocked !== data.user.isDashboardLocked ||
               prev.isCertificateLocked !== data.user.isCertificateLocked ||
-              prev.isSuspended !== data.user.isSuspended
+              prev.isSuspended !== data.user.isSuspended ||
+              prev.noticeActive !== data.user.noticeActive ||
+              prev.noticeTitle !== data.user.noticeTitle ||
+              prev.noticeMessage !== data.user.noticeMessage
 
             if (hasChanged) {
               try {

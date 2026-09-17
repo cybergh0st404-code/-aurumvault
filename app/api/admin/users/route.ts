@@ -109,12 +109,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true, user: updated })
     }
 
-    if (action === 'set_notice' || action === 'toggle_notice') {
+    if (action === 'set_notice' || action === 'toggle_notice' || action === 'update_notice') {
       const noticeActive = body.noticeActive !== undefined
         ? Boolean(body.noticeActive)
-        : (body.value !== undefined ? Boolean(body.value) : true)
-      const noticeTitle = body.noticeTitle !== undefined ? body.noticeTitle : null
-      const noticeMessage = body.noticeMessage !== undefined ? body.noticeMessage : null
+        : (body.value !== undefined ? Boolean(body.value) : undefined)
+      const noticeTitle = body.noticeTitle !== undefined ? body.noticeTitle : undefined
+      const noticeMessage = body.noticeMessage !== undefined ? body.noticeMessage : undefined
 
       const updated = await updateUserRestrictions(targetId, {
         noticeActive,
