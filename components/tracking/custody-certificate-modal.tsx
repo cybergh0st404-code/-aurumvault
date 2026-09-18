@@ -150,15 +150,21 @@ export function CustodyCertificateModal({ shipment, isOpen, onClose, isLocked = 
             {/* Route & Custody Transfer Grid */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2 text-xs border border-border rounded-lg p-4">
               <div>
-                <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Origin Point of Vaulting</span>
+                <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Origin Point & Shipper</span>
                 <p className="font-semibold text-foreground mt-0.5">{shipment.origin.facility}</p>
+                {shipment.shipperName && (
+                  <p className="text-[11px] text-primary font-mono mt-0.5">Shipper: {shipment.shipperName} {shipment.shipperPhone ? `(${shipment.shipperPhone})` : ''}</p>
+                )}
                 <p className="text-muted-foreground text-[11px] mt-0.5">{shipment.origin.city}, {shipment.origin.country} ({shipment.origin.code})</p>
                 <p className="text-[11px] text-muted-foreground mt-1">Dispatched: <span className="font-mono">{shipment.dispatchedAt}</span></p>
               </div>
 
               <div>
-                <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Destination High-Security Vault</span>
+                <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Destination & Designated Receiver</span>
                 <p className="font-semibold text-foreground mt-0.5">{shipment.destination.facility}</p>
+                {shipment.receiverName && (
+                  <p className="text-[11px] text-primary font-mono mt-0.5">Receiver: {shipment.receiverName} {shipment.receiverContact ? `(${shipment.receiverContact})` : ''}</p>
+                )}
                 <p className="text-muted-foreground text-[11px] mt-0.5">{shipment.destination.city}, {shipment.destination.country} ({shipment.destination.code})</p>
                 <p className="text-[11px] text-muted-foreground mt-1">Target Handover: <span className="font-mono">{shipment.eta}</span></p>
               </div>

@@ -30,6 +30,8 @@ interface ShipmentsContextType {
   simulationSettings: SimulationSettings
   setSimulationSettings: React.Dispatch<React.SetStateAction<SimulationSettings>>
   resetToDefaults: () => void
+  updateShipmentDetails: (id: string, updates: any) => Promise<Shipment | undefined>
+  refreshShipmentsFromServer: () => Promise<void>
 }
 
 
@@ -117,7 +119,25 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('LocalStorage unavailable:', e)
     }
+
+    refreshShipmentsFromServer()
   }, [])
+
+  const refreshShipmentsFromServer = async () => {
+    try {
+      const res = await fetch('/api/shipments', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data && data.success && Array.isArray(data.shipments) && data.shipments.length > 0) {
+        setShipments(data.shipments)
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.shipments))
+        } catch {}
+      }
+    } catch (e) {
+      console.warn('Failed to load server shipments:', e)
+    }
+  }
 
   // Real-time server telemetry background sync (cross-device sync across phones/laptops)
   useEffect(() => {
@@ -443,6 +463,32 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     setSimulationSettings({ isCruising: true, cruiseSpeed: 1 })
   }
 
+  const updateShipmentDetails = async (id: string, updates: any): Promise<Shipment | undefined> => {
+    try {
+      const res = await fetch('/api/shipments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      })
+      const data = await res.json()
+      if (data.success && data.shipment) {
+        setShipments(prev => {
+          const exists = prev.some(s => s.id === id)
+          const next = exists
+            ? prev.map(s => (s.id === id ? data.shipment : s))
+            : [...prev, data.shipment]
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+          } catch {}
+          return next
+        })
+        return data.shipment
+      }
+    } catch (e) {
+      console.error('Failed to update shipment via API:', e)
+    }
+  }
+
   return (
     <ShipmentsContext.Provider
       value={{
@@ -466,6 +512,8 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
         simulationSettings,
         setSimulationSettings,
         resetToDefaults,
+        updateShipmentDetails,
+        refreshShipmentsFromServer,
       }}
     >
       {children}

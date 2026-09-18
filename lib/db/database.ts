@@ -106,6 +106,10 @@ export async function ensureDbInitialized(): Promise<void> {
     if (count === 0) {
       await seedDefaultUsers(db)
     }
+
+    // Ensure shipments table is created and seeded with sovereign consignments
+    const { ensureShipmentsTable } = await import('./shipment-repository')
+    await ensureShipmentsTable()
   })()
 
   return initPromise

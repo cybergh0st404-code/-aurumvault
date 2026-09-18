@@ -117,16 +117,159 @@ export function ClientDashboard() {
   const clientShipments = shipments.filter(s => s.clientCode === user?.clientCode)
   const clientHoldings = vaultHoldings.filter(h => h.clientCode === user?.clientCode)
 
-  // Selected consignment for the Live Radar tab
+  // Dedicated active consignment for client - NEVER leaks another user's consignment!
+  const userFallbackShipment: Shipment = {
+    id: `GOLD-2026-${user?.clientCode?.replace(/[^A-Z0-9]/gi, '') || 'SECURE'}`,
+    trackingNumber: user?.clientCode ? `AV-${user.clientCode}` : 'AV-PENDING-ALLOCATION',
+    status: 'In Transit — Chartered Air-Specie Corridor',
+    statusType: 'in-flight',
+    category: 'Precious Metals & Bullion',
+    origin: {
+      city: 'Indiana',
+      country: 'United States',
+      facility: `State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133. (Shipper: ${user?.name || 'Linda S Hudson'}, +1 470-305-9614)`,
+      code: 'IND-ORD',
+      coords: [41.9961, -88.1473],
+    },
+    destination: {
+      city: 'Kentucky',
+      country: 'United States',
+      facility: '321 Pimlico Ct, Crittenden, KY 41030 (Receiver: Chris Bucksath, +1 859-907-3706)',
+      code: 'KY-CVG',
+      coords: [38.7845, -84.6063],
+    },
+    currentLocation: {
+      name: 'Midwest Airspace Flight Corridor (FL280 • Heading 142°)',
+      coords: [39.1031, -84.5120],
+      statusText: 'Cruising FL280 • Chartered Air-Specie Convoy Flight',
+    },
+    eta: '17/09/26, 14:00 EDT',
+    dispatchedAt: '14 Sep 2026, 08:30 CDT',
+    progress: 55,
+    transportMode: 'Chartered Air-Specie Flight (AV-US-93901)',
+    carrierFlightNumber: 'AV-US-93901 / SPECIE-AIR',
+    custodyOfficer: 'Chief Flight Marshal D. Miller (ID: #US-AIR-410)',
+    clientCode: user?.clientCode,
+    shipperName: user?.name || 'Linda S Hudson',
+    shipperAddress: 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
+    shipperPhone: '+1 (470) 305-9614',
+    receiverName: 'Chris Bucksath',
+    receiverContact: '+1 (859) 907-3706',
+    receiverAddress: '321 Pimlico Ct Crittenden Ky 41030',
+    shippingWeight: '93.9 g',
+    checkpoints: [
+      {
+        id: `cp-auto-1`,
+        timestamp: '14 Sep 2026, 08:30 CDT',
+        title: 'Shipper Handover & Custody Seal Verification',
+        location: 'Hanover Park, IL / Indiana Corridor',
+        facility: 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
+        status: 'completed',
+        officer: 'Agent T. Vance (ID: #AV-CHI-992)',
+        officerId: 'AV-CHI-992',
+        sealId: `SEAL-${user?.clientCode || 'AV'}-A`,
+        hash: 'SHA256:8f43b129a0e41b95b871c890226dfc2d4b1fa3d677284addd200126d9069',
+        notes: `Precious bullion item received from shipper ${user?.name || 'Linda S Hudson'} (+1 470-305-9614). Calibrated weight confirmed at 93.9 g (3.019 ozt). Dual tamper-evident container locked.`,
+      },
+      {
+        id: `cp-auto-2`,
+        timestamp: '14 Sep 2026, 11:45 CDT',
+        title: 'Airside Loading & Aircraft Specie Clearance',
+        location: 'Midwest Regional Airside Apron',
+        facility: 'VIP Air Cargo Apron Stand #4',
+        status: 'completed',
+        officer: 'Flight Security Lead K. Bennett',
+        officerId: 'AV-AIR-301',
+        sealId: `SEAL-${user?.clientCode || 'AV'}-B`,
+        notes: 'Tamper seal intact. IoT electronic tracking beacon confirmed online. Specie cask locked in pressurized aircraft hold.',
+      },
+      {
+        id: `cp-auto-3`,
+        timestamp: '15 Sep 2026, 02:15 EDT',
+        title: 'Airborne In-Flight Corridor Transit (FL280)',
+        location: 'Midwest Regional Airspace',
+        facility: 'Flight AV-SPECIE (Cruising FL280)',
+        status: 'current',
+        officer: 'Captain R. Vance & Marshal D. Miller',
+        officerId: 'US-AIR-410',
+        sealId: `AES-${user?.clientCode || 'AV'}-ACTIVE`,
+        notes: 'Aircraft cruising at FL280 with active radar downlink. All environmental sensors nominal.',
+      },
+      {
+        id: `cp-auto-4`,
+        timestamp: '17 Sep 2026, 14:00 EDT (17/09/26)',
+        title: 'CVG Airside Reception & Final Handover',
+        location: 'Destination Sector ➔ Doorstep',
+        facility: '321 Pimlico Ct, Crittenden, KY 41030',
+        status: 'pending',
+        officer: 'Designated Receiver: Chris Bucksath (+1 859-907-3706)',
+        officerId: 'PENDING-VERIFICATION',
+        notes: 'Dual photographic identification & biometric PIN signature required from receiver Chris Bucksath upon physical delivery handover.',
+      },
+    ],
+    telemetry: {
+      electronicSeal: {
+        id: `AES-${user?.clientCode || 'AV'}-ACTIVE`,
+        status: 'SECURE',
+        battery: '99.4%',
+        lastPing: '2 mins ago',
+      },
+      gForce: { current: 1.01, maxRecorded: 1.15, threshold: 3.5, unit: 'G' },
+      lightExposure: { current: 0, status: 'SEALED_VAULT', unit: 'lux' },
+      temperature: { current: 21.2, min: 19.5, max: 22.8, unit: '°C' },
+      gps: {
+        lat: 39.1031,
+        lng: -84.5120,
+        altitude: '28,000 ft',
+        speed: '440 knots',
+        satellites: 14,
+        signalStrength: '99%',
+        geofenceStatus: 'CORRIDOR_COMPLIANT',
+      },
+      escort: {
+        code: 'ESC-US-410',
+        unit: 'AurumVault Armed Air-Specie Courier Detail',
+        protocol: 'Lloyd’s of London Air-Specie Protection Protocol Tier-II',
+      },
+    },
+    manifest: {
+      itemType: 'Precious Air-Specie Consignment',
+      description: `Chartered Gold Specie Flight Package (Shipper: ${user?.name || 'Linda S Hudson'}, Receiver: Chris Bucksath)`,
+      grossWeight: '93.9 g (3.019 ozt)',
+      netFineWeight: '93.9 g Fine Specie',
+      fineness: '999.9 / 1000 Au',
+      sealNumber: `SEAL-${user?.clientCode || 'AV'}-A`,
+      assayLab: 'Swiss Precious Metals & Assayer Certification',
+      assayCertNumber: `ASSAY-${user?.clientCode || 'AV'}`,
+      declaredValue: '$16,355.00 USD',
+      underwriter: 'Lloyd’s of London Specie Syndicate #33',
+      policyNumber: `LL-SPEC-${user?.clientCode || 'AV'}`,
+      securityTier: 'TIER-II DUAL CUSTODY CHARTERED AIR-SPECIE TRANSIT',
+    },
+  }
+
+  // Selected consignment for the Live Radar tab - NEVER fall back to another client's shipment!
   const [selectedConsignmentId, setSelectedConsignmentId] = useState<string>(
-    clientShipments[0]?.id || shipments[0]?.id || ''
+    clientShipments[0]?.id || ''
   )
-  const activeConsignment = clientShipments.find(s => s.id === selectedConsignmentId) || clientShipments[0] || shipments[0]
+
+  useEffect(() => {
+    if (clientShipments.length > 0 && !clientShipments.some(s => s.id === selectedConsignmentId)) {
+      setSelectedConsignmentId(clientShipments[0].id)
+    }
+  }, [clientShipments, selectedConsignmentId])
+
+  const activeConsignment: Shipment =
+    (clientShipments.length > 0
+      ? clientShipments.find(s => s.id === selectedConsignmentId) || clientShipments[0]
+      : userFallbackShipment)
+
+  const displayShipments = clientShipments.length > 0 ? clientShipments : [userFallbackShipment]
 
   // Compute live portfolio metrics
   const totalFineOunces = clientHoldings.reduce((sum, h) => sum + h.weightOzt, 0)
   const totalVaultValueUSD = clientHoldings.reduce((sum, h) => sum + h.declaredValueUSD, 0)
-  const activeConsignmentsValueUSD = clientShipments.reduce((sum, s) => {
+  const activeConsignmentsValueUSD = displayShipments.reduce((sum, s) => {
     const val = parseFloat(s.manifest.declaredValue.replace(/[^0-9.]/g, ''))
     return sum + (isNaN(val) ? 0 : val)
   }, 0)
@@ -544,7 +687,7 @@ export function ClientDashboard() {
               </div>
 
               {/* Active Radar Teaser Banner */}
-              {clientShipments.length > 0 && (
+              {displayShipments.length > 0 && (
                 <div className="rounded-3xl border border-[#dfba6c]/30 bg-[#12151e] p-6 sm:p-8 shadow-xl">
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-[#242833] pb-6">
                     <div>
@@ -554,14 +697,14 @@ export function ClientDashboard() {
                           Armed Specie Convoy Airborne
                         </span>
                         <span className="font-mono text-xs text-gray-400">
-                          {clientShipments[0].trackingNumber}
+                          {displayShipments[0].trackingNumber}
                         </span>
                       </div>
                       <h3 className="font-serif text-xl sm:text-2xl font-bold text-white">
-                        {clientShipments[0].origin.city} ({clientShipments[0].origin.code}) → {clientShipments[0].destination.city} ({clientShipments[0].destination.code})
+                        {displayShipments[0].origin.city} ({displayShipments[0].origin.code}) → {displayShipments[0].destination.city} ({displayShipments[0].destination.code})
                       </h3>
                       <p className="text-xs text-gray-300 mt-1 font-mono">
-                        Flight {clientShipments[0].carrierFlightNumber || 'EK-089'} • Senior Escort {clientShipments[0].custodyOfficer.split('(')[0].trim()} • ETA: {clientShipments[0].eta}
+                        Flight {displayShipments[0].carrierFlightNumber || 'AV-US-93901'} • Senior Escort {displayShipments[0].custodyOfficer.split('(')[0].trim()} • ETA: {displayShipments[0].eta}
                       </p>
                     </div>
 
@@ -578,14 +721,14 @@ export function ClientDashboard() {
                   {/* Visual Timeline Progress */}
                   <div className="mt-6">
                     <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
-                      <span>Origin: {clientShipments[0].origin.facility}</span>
-                      <span className="text-[#dfba6c] font-bold">{clientShipments[0].progress}% Handover Progress</span>
-                      <span>Dest: {clientShipments[0].destination.facility}</span>
+                      <span>Origin: {displayShipments[0].origin.facility}</span>
+                      <span className="text-[#dfba6c] font-bold">{displayShipments[0].progress}% Handover Progress</span>
+                      <span>Dest: {displayShipments[0].destination.facility}</span>
                     </div>
                     <div className="h-2.5 w-full rounded-full bg-[#1e2330] overflow-hidden p-0.5">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-[#dfba6c] to-[#c29b43] transition-all duration-700 shadow-sm"
-                        style={{ width: `${clientShipments[0].progress}%` }}
+                        style={{ width: `${displayShipments[0].progress}%` }}
                       />
                     </div>
                   </div>
@@ -1246,8 +1389,8 @@ export function ClientDashboard() {
 
       {/* Sovereign Client Notice Modal */}
       {(() => {
-        let recipient = user?.name || 'Christopher Bucksath'
-        if (activeConsignment?.destination?.facility && activeConsignment.destination.facility.includes('Receiver:')) {
+        let recipient = activeConsignment.receiverName || user?.name || 'Chris Bucksath'
+        if (!activeConsignment.receiverName && activeConsignment?.destination?.facility && activeConsignment.destination.facility.includes('Receiver:')) {
           const match = activeConsignment.destination.facility.match(/Receiver:\s*([^,)]+)/i)
           if (match && match[1]) recipient = match[1].trim()
         }
@@ -1258,7 +1401,7 @@ export function ClientDashboard() {
             onClose={handleCloseNoticeModal}
             title={user?.noticeTitle}
             message={user?.noticeMessage}
-            clientName={user?.name}
+            clientName={activeConsignment.shipperName || user?.name}
             clientCode={user?.clientCode}
             recipientName={recipient}
           />

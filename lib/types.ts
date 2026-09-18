@@ -103,6 +103,13 @@ export interface Shipment {
   carrierFlightNumber?: string
   custodyOfficer: string
   clientCode?: string
+  shipperName?: string
+  shipperAddress?: string
+  shipperPhone?: string
+  receiverName?: string
+  receiverContact?: string
+  receiverAddress?: string
+  shippingWeight?: string
   checkpoints: Checkpoint[]
   telemetry: SensorTelemetry
   manifest: AssetManifest

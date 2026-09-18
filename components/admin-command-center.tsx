@@ -5,6 +5,7 @@ import { useShipments } from '@/lib/shipments-context'
 import { Shipment, Checkpoint } from '@/lib/types'
 import { TrackingMap } from './tracking/tracking-map'
 import { useAuth } from '@/lib/auth-context'
+import { EditUserConsignmentModal } from './admin/edit-user-consignment-modal'
 import {
   ShieldCheck,
   Radio,
@@ -155,6 +156,8 @@ export function AdminCommandCenter() {
     simulationSettings,
     setSimulationSettings,
     resetToDefaults,
+    updateShipmentDetails,
+    refreshShipmentsFromServer,
   } = useShipments()
 
   const { user, role, logout, quickLogin, login } = useAuth()
@@ -164,6 +167,23 @@ export function AdminCommandCenter() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Edit User & Consignment Modal State
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<DbUser | null>(null)
+  const [editUserModalOpen, setEditUserModalOpen] = useState(false)
+
+  // Expandable initial consignment config in create user form
+  const [expandConsignmentConfig, setExpandConsignmentConfig] = useState(false)
+  const [newShipperName, setNewShipperName] = useState('')
+  const [newOrigin, setNewOrigin] = useState('Indiana')
+  const [newShipperAddress, setNewShipperAddress] = useState('State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133.')
+  const [newShipperPhone, setNewShipperPhone] = useState('+1 (470) 305-9614')
+  const [newReceiverName, setNewReceiverName] = useState('Chris Bucksath')
+  const [newReceiverContact, setNewReceiverContact] = useState('+1 (859) 907-3706')
+  const [newReceiverAddress, setNewReceiverAddress] = useState('321 Pimlico Ct Crittenden Ky 41030')
+  const [newDestination, setNewDestination] = useState('Kentucky')
+  const [newShippingWeight, setNewShippingWeight] = useState('93.9 g')
+  const [newEta, setNewEta] = useState('17/09/26')
 
   const [activeTab, setActiveTab] = useState<'fleet' | 'dispatch' | 'quotes' | 'sensors' | 'users' | 'notices'>('fleet')
   const [filter, setFilter] = useState('all')
@@ -268,18 +288,35 @@ export function AdminCommandCenter() {
           clientCode: newUserClientCode || undefined,
           organization: newUserOrg || (newUserRole === 'admin' ? 'AurumVault Federal Operations Command' : 'Swiss Private Depository Client'),
           securityClearance: newUserClearance || (newUserRole === 'admin' ? 'LEVEL-V SWISS AIRSPACE COMMAND' : 'ALLOCATED VAULT DEPOSITOR'),
+          consignment: newUserRole === 'client' ? {
+            shipperName: newShipperName || newUserName,
+            origin: newOrigin || 'Indiana',
+            shipperAddress: newShipperAddress || 'State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133.',
+            shipperPhone: newShipperPhone || '+1 (470) 305-9614',
+            receiverName: newReceiverName || 'Chris Bucksath',
+            receiverContact: newReceiverContact || '+1 (859) 907-3706',
+            receiverAddress: newReceiverAddress || '321 Pimlico Ct Crittenden Ky 41030',
+            destination: newDestination || 'Kentucky',
+            shippingWeight: newShippingWeight || '93.9 g',
+            eta: newEta || '17/09/26',
+          } : undefined,
         }),
       })
       const data = await res.json()
       if (data.success) {
-        setUserActionFeedback('✓ New user credentials committed to SQLite with salted scrypt hashing!')
+        setUserActionFeedback('✓ New user credentials and dedicated consignment committed to SQLite!')
         setNewUserName('')
         setNewUserEmail('')
         setNewUserPassword('')
         setNewUserClientCode('')
         setNewUserOrg('')
         setNewUserClearance('')
+        setNewShipperName('')
+        setExpandConsignmentConfig(false)
         fetchUsers()
+        if (refreshShipmentsFromServer) {
+          refreshShipmentsFromServer()
+        }
         setTimeout(() => setUserActionFeedback(null), 5000)
       } else {
         setUserActionFeedback(`Error: ${data.error || 'Failed to create user'}`)
@@ -1051,22 +1088,47 @@ export function AdminCommandCenter() {
                     </p>
                   </div>
 
-                  {/* Consignment Switcher */}
+                  {/* Consignment Switcher with User Labels & Direct Edit */}
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-mono text-gray-400 mr-1">Select Mission:</span>
-                    {shipments.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => setSelectedShipmentId(s.id)}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-mono font-bold transition ${
-                          activeShipment.id === s.id
-                            ? 'bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black shadow-md'
-                            : 'border border-[#262c3b] bg-[#161a24] text-gray-300 hover:bg-[#1e2330] hover:text-white'
-                        }`}
-                      >
-                        {s.id}
-                      </button>
-                    ))}
+                    {shipments.map(s => {
+                      const matchingUser = dbUsers.find(u => u.client_code && u.client_code === s.clientCode)
+                      const shipperDisplayName = s.shipperName || matchingUser?.name || s.id
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setSelectedShipmentId(s.id)}
+                          className={`rounded-xl px-3 py-1.5 text-xs font-mono font-bold transition flex items-center gap-1.5 ${
+                            activeShipment.id === s.id
+                              ? 'bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black shadow-md'
+                              : 'border border-[#262c3b] bg-[#161a24] text-gray-300 hover:bg-[#1e2330] hover:text-white'
+                          }`}
+                        >
+                          <span>{shipperDisplayName}</span>
+                          <span className="text-[10px] opacity-75">({s.origin.city} ➔ {s.destination.city})</span>
+                        </button>
+                      )
+                    })}
+                    {(() => {
+                      const clientUser = dbUsers.find(u => u.client_code && u.client_code === activeShipment.clientCode)
+                      if (clientUser) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedUserForEdit(clientUser)
+                              setEditUserModalOpen(true)
+                            }}
+                            className="rounded-xl border border-[#dfba6c]/40 bg-[#dfba6c]/10 px-3 py-1.5 text-xs font-mono font-bold text-[#dfba6c] hover:bg-[#dfba6c]/20 transition flex items-center gap-1.5 shadow-sm"
+                            title="Edit this consignment's details, shipper, receiver, and radar controls"
+                          >
+                            <Edit3 size={13} />
+                            <span>Edit Mission Details</span>
+                          </button>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
 
@@ -1923,6 +1985,17 @@ export function AdminCommandCenter() {
                                     {u.client_code}
                                   </span>
                                 )}
+                                {(() => {
+                                  const uShipment = shipments.find(s => s.clientCode === u.client_code)
+                                  if (uShipment) {
+                                    return (
+                                      <span className="text-[9px] font-mono text-[#dfba6c] bg-[#dfba6c]/10 border border-[#dfba6c]/20 px-1.5 py-0.5 rounded w-fit mt-0.5">
+                                        {uShipment.origin.city} ➔ {uShipment.destination.city} ({uShipment.shippingWeight || uShipment.manifest?.grossWeight || '93.9g'})
+                                      </span>
+                                    )
+                                  }
+                                  return null
+                                })()}
                               </div>
                             </td>
 
@@ -1983,6 +2056,19 @@ export function AdminCommandCenter() {
                                 </span>
                               ) : u.role === 'client' ? (
                                 <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                  {/* Edit User & Consignment Details */}
+                                  <button
+                                    onClick={() => {
+                                      setSelectedUserForEdit(u)
+                                      setEditUserModalOpen(true)
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#dfba6c]/40 bg-[#dfba6c]/15 px-2.5 py-1.5 text-[11px] font-mono font-bold text-[#dfba6c] hover:bg-[#dfba6c]/25 transition shadow-sm"
+                                    title="Edit user profile, consignment shipper/receiver, weight, ETA, and radar controls"
+                                  >
+                                    <Edit3 size={12} />
+                                    <span>Edit Details & Radar</span>
+                                  </button>
+
                                   {/* Toggle Dashboard Lock */}
                                   <button
                                     onClick={() => handleToggleDashboardLock(u)}
@@ -2187,6 +2273,135 @@ export function AdminCommandCenter() {
                       />
                     </div>
                   </div>
+
+                  {newUserRole === 'client' && (
+                    <div className="rounded-2xl border border-[#262c3b] bg-[#141822] p-4 text-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-mono font-bold text-[#dfba6c]">
+                          <Plane size={14} />
+                          <span>Initial Dedicated Specie Consignment & Route (Customizable)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setExpandConsignmentConfig(!expandConsignmentConfig)}
+                          className="text-[11px] font-mono text-gray-400 hover:text-white underline"
+                        >
+                          {expandConsignmentConfig ? 'Hide Advanced Config ▲' : 'Customize Consignment Details ▼'}
+                        </button>
+                      </div>
+
+                      {expandConsignmentConfig ? (
+                        <div className="space-y-3 pt-2 border-t border-[#242833]">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Name</label>
+                              <input
+                                type="text"
+                                value={newShipperName}
+                                onChange={e => setNewShipperName(e.target.value)}
+                                placeholder={newUserName || 'Linda S Hudson'}
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Origin (State / City)</label>
+                              <input
+                                type="text"
+                                value={newOrigin}
+                                onChange={e => setNewOrigin(e.target.value)}
+                                placeholder="Indiana"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Address</label>
+                              <input
+                                type="text"
+                                value={newShipperAddress}
+                                onChange={e => setNewShipperAddress(e.target.value)}
+                                placeholder="State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133."
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Phone</label>
+                              <input
+                                type="text"
+                                value={newShipperPhone}
+                                onChange={e => setNewShipperPhone(e.target.value)}
+                                placeholder="+1 (470) 305-9614"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Name</label>
+                              <input
+                                type="text"
+                                value={newReceiverName}
+                                onChange={e => setNewReceiverName(e.target.value)}
+                                placeholder="Chris Bucksath"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Contact / Phone</label>
+                              <input
+                                type="text"
+                                value={newReceiverContact}
+                                onChange={e => setNewReceiverContact(e.target.value)}
+                                placeholder="+1 (859) 907-3706"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Destination (State / City)</label>
+                              <input
+                                type="text"
+                                value={newDestination}
+                                onChange={e => setNewDestination(e.target.value)}
+                                placeholder="Kentucky"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Address</label>
+                              <input
+                                type="text"
+                                value={newReceiverAddress}
+                                onChange={e => setNewReceiverAddress(e.target.value)}
+                                placeholder="321 Pimlico Ct Crittenden Ky 41030"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipping Weight</label>
+                              <input
+                                type="text"
+                                value={newShippingWeight}
+                                onChange={e => setNewShippingWeight(e.target.value)}
+                                placeholder="93.9 g"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Estimated Delivery Date (ETA)</label>
+                              <input
+                                type="text"
+                                value={newEta}
+                                onChange={e => setNewEta(e.target.value)}
+                                placeholder="17/09/26"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 font-mono">
+                          Default route (<span className="text-white">Indiana ➔ Kentucky</span>, Shipper: <span className="text-white">{newUserName || 'Client'}</span>, Receiver: <span className="text-white">Chris Bucksath</span>, Weight: <span className="text-white">93.9 g</span>, ETA: <span className="text-white">17/09/26</span>) will be provisioned. You can modify these anytime via &quot;Edit Details &amp; Radar&quot;.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <button
                     type="submit"
@@ -2880,6 +3095,25 @@ export function AdminCommandCenter() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit User & Consignment Modal */}
+      {editUserModalOpen && selectedUserForEdit && (
+        <EditUserConsignmentModal
+          isOpen={editUserModalOpen}
+          onClose={() => {
+            setEditUserModalOpen(false)
+            setSelectedUserForEdit(null)
+          }}
+          user={selectedUserForEdit}
+          shipment={shipments.find(s => s.clientCode === selectedUserForEdit.client_code)}
+          onSaved={() => {
+            fetchUsers()
+            if (refreshShipmentsFromServer) {
+              refreshShipmentsFromServer()
+            }
+          }}
+        />
       )}
     </div>
   )

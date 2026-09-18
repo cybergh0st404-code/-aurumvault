@@ -52,6 +52,18 @@ export async function POST(request: Request) {
       clientCode,
       organization: organization || 'Swiss Private Depository Client',
       securityClearance,
+      consignment: body.consignment || (role === 'client' ? {
+        shipperName: body.shipperName || name,
+        origin: body.origin || 'Indiana',
+        shipperAddress: body.shipperAddress || 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
+        shipperPhone: body.shipperPhone || '+1 (470) 305-9614',
+        receiverName: body.receiverName || 'Chris Bucksath',
+        receiverContact: body.receiverContact || '+1 (859) 907-3706',
+        receiverAddress: body.receiverAddress || '321 Pimlico Ct Crittenden Ky 41030',
+        shippingWeight: body.shippingWeight || '93.9 g',
+        eta: body.eta || '17/09/26',
+        destination: body.destination || 'Kentucky',
+      } : undefined),
     })
 
     return NextResponse.json({ success: true, user: created })
@@ -80,6 +92,70 @@ export async function PATCH(request: Request) {
 
     if (!targetId || !action) {
       return NextResponse.json({ error: 'User ID and action are required.' }, { status: 400 })
+    }
+
+    if (action === 'update_profile' || action === 'update_user' || action === 'edit_details') {
+      const { updateUserProfile } = await import('@/lib/db/user-repository')
+      const updated = await updateUserProfile(targetId, {
+        name: body.name,
+        email: body.email,
+        password: body.password,
+        organization: body.organization,
+        securityClearance: body.securityClearance,
+        clientCode: body.clientCode,
+      })
+
+      // If consignment update payload is present, update user's shipment
+      if (body.consignment || body.shipperName || body.shipmentId || body.receiverName) {
+        const { updateShipmentDetails, getShipmentsByClientCode, createDedicatedShipmentForClient } = await import('@/lib/db/shipment-repository')
+        const clientCode = body.clientCode || updated?.client_code
+        if (clientCode) {
+          const userShipments = await getShipmentsByClientCode(clientCode)
+          const targetShipmentId = body.shipmentId || userShipments[0]?.id
+
+          const cData = body.consignment || body
+          if (targetShipmentId) {
+            await updateShipmentDetails(targetShipmentId, {
+              shipperName: cData.shipperName,
+              originCity: cData.originCity || cData.origin,
+              shipperAddress: cData.shipperAddress,
+              shipperPhone: cData.shipperPhone,
+              receiverName: cData.receiverName,
+              receiverContact: cData.receiverContact,
+              receiverAddress: cData.receiverAddress,
+              destinationCity: cData.destinationCity || cData.destination,
+              shippingWeight: cData.shippingWeight,
+              eta: cData.eta,
+              status: cData.status,
+              statusType: cData.statusType,
+              progress: cData.progress,
+              isPaused: cData.isPaused,
+              speedMultiplier: cData.speedMultiplier,
+              carrierFlightNumber: cData.carrierFlightNumber,
+              custodyOfficer: cData.custodyOfficer,
+              declaredValue: cData.declaredValue,
+              cargoDescription: cData.cargoDescription,
+            })
+          } else {
+            await createDedicatedShipmentForClient({
+              clientCode,
+              name: updated?.name || body.name || 'Specie Client',
+              shipperName: cData.shipperName,
+              origin: cData.originCity || cData.origin,
+              shipperAddress: cData.shipperAddress,
+              shipperPhone: cData.shipperPhone,
+              receiverName: cData.receiverName,
+              receiverContact: cData.receiverContact,
+              receiverAddress: cData.receiverAddress,
+              shippingWeight: cData.shippingWeight,
+              eta: cData.eta,
+              destination: cData.destinationCity || cData.destination,
+            })
+          }
+        }
+      }
+
+      return NextResponse.json({ success: true, user: updated })
     }
 
     if (targetId === admin.id) {

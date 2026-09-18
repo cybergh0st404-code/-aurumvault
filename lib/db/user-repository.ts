@@ -74,6 +74,18 @@ export async function createUser(data: {
   clientCode?: string
   organization: string
   securityClearance?: string
+  consignment?: {
+    shipperName?: string
+    origin?: string
+    shipperAddress?: string
+    shipperPhone?: string
+    receiverName?: string
+    receiverContact?: string
+    receiverAddress?: string
+    shippingWeight?: string
+    eta?: string
+    destination?: string
+  }
 }): Promise<SafeUserRecord> {
   await ensureDbInitialized()
   const db = getDb()
@@ -119,6 +131,29 @@ export async function createUser(data: {
       clearance,
     ],
   })
+
+  // When creating a client user, automatically create their dedicated consignment & radar
+  if (data.role === 'client' && clientCode) {
+    try {
+      const { createDedicatedShipmentForClient } = await import('./shipment-repository')
+      await createDedicatedShipmentForClient({
+        clientCode,
+        name: data.name.trim(),
+        shipperName: data.consignment?.shipperName,
+        origin: data.consignment?.origin,
+        shipperAddress: data.consignment?.shipperAddress,
+        shipperPhone: data.consignment?.shipperPhone,
+        receiverName: data.consignment?.receiverName,
+        receiverContact: data.consignment?.receiverContact,
+        receiverAddress: data.consignment?.receiverAddress,
+        shippingWeight: data.consignment?.shippingWeight,
+        eta: data.consignment?.eta,
+        destination: data.consignment?.destination,
+      })
+    } catch (err) {
+      console.error('Failed to auto-create client shipment in SQLite:', err)
+    }
+  }
 
   return {
     id,
@@ -296,3 +331,62 @@ export async function updateUserRestrictions(
   const { password_hash, password_salt, ...safe } = updated
   return safe
 }
+
+export async function updateUserProfile(
+  userId: string,
+  data: {
+    name?: string
+    email?: string
+    password?: string
+    role?: UserRole
+    clientCode?: string
+    organization?: string
+    securityClearance?: string
+  }
+): Promise<SafeUserRecord | null> {
+  await ensureDbInitialized()
+  const db = getDb()
+
+  const user = await findUserById(userId)
+  if (!user) return null
+
+  const name = data.name !== undefined ? data.name.trim() : user.name
+  const email = data.email !== undefined ? data.email.trim().toLowerCase() : user.email
+  const organization = data.organization !== undefined ? data.organization.trim() : user.organization
+  const security_clearance = data.securityClearance !== undefined ? data.securityClearance.trim() : user.security_clearance
+  const client_code = data.clientCode !== undefined ? (data.clientCode ? data.clientCode.trim() : null) : user.client_code
+
+  const initials = name
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || user.avatar_initials || 'AV'
+
+  if (data.password && data.password.trim().length > 0) {
+    const { hash, salt } = hashPassword(data.password.trim())
+    await db.execute({
+      sql: `UPDATE users
+            SET name = ?, email = ?, password_hash = ?, password_salt = ?,
+                organization = ?, security_clearance = ?, client_code = ?,
+                avatar_initials = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [name, email, hash, salt, organization, security_clearance, client_code, initials, userId],
+    })
+  } else {
+    await db.execute({
+      sql: `UPDATE users
+            SET name = ?, email = ?,
+                organization = ?, security_clearance = ?, client_code = ?,
+                avatar_initials = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+      args: [name, email, organization, security_clearance, client_code, initials, userId],
+    })
+  }
+
+  const updated = await findUserById(userId)
+  if (!updated) return null
+  const { password_hash, password_salt, ...safe } = updated
+  return safe
+}
+
