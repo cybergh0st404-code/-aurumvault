@@ -154,8 +154,8 @@ function rowToShipment(row: any): Shipment {
     },
     eta: String(row.eta),
     dispatchedAt: String(row.dispatched_at),
-    progress: Number(row.progress),
-    isPaused: Boolean(row.is_paused),
+    progress: Number(row.progress ?? 55),
+    isPaused: row.is_paused === 1 || row.is_paused === true || row.is_paused === '1',
     speedMultiplier: Number(row.speed_multiplier) || 1,
     transportMode: String(row.transport_mode),
     carrierFlightNumber: row.carrier_flight_number ? String(row.carrier_flight_number) : 'AV-SPECIE-AIR',
@@ -255,7 +255,16 @@ async function insertShipmentIntoDb(s: Shipment): Promise<void> {
 export async function listAllShipments(): Promise<Shipment[]> {
   await ensureDbInitialized()
   const db = getDb()
-  const res = await db.execute('SELECT * FROM shipments ORDER BY created_at DESC')
+  const res = await db.execute(`
+    SELECT s.*, 
+      COALESCE(t.progress, s.progress) as progress,
+      COALESCE(t.is_paused, s.is_paused) as is_paused,
+      COALESCE(t.speed_multiplier, s.speed_multiplier) as speed_multiplier,
+      COALESCE(t.status, s.status) as status
+    FROM shipments s
+    LEFT JOIN shipment_telemetry t ON s.id = t.shipment_id
+    ORDER BY s.created_at DESC
+  `)
   return res.rows.map(rowToShipment)
 }
 
@@ -263,7 +272,16 @@ export async function getShipmentById(id: string): Promise<Shipment | null> {
   await ensureDbInitialized()
   const db = getDb()
   const res = await db.execute({
-    sql: 'SELECT * FROM shipments WHERE id = ?',
+    sql: `
+      SELECT s.*, 
+        COALESCE(t.progress, s.progress) as progress,
+        COALESCE(t.is_paused, s.is_paused) as is_paused,
+        COALESCE(t.speed_multiplier, s.speed_multiplier) as speed_multiplier,
+        COALESCE(t.status, s.status) as status
+      FROM shipments s
+      LEFT JOIN shipment_telemetry t ON s.id = t.shipment_id
+      WHERE s.id = ?
+    `,
     args: [id],
   })
   if (res.rows.length === 0) return null
@@ -274,7 +292,17 @@ export async function getShipmentsByClientCode(clientCode: string): Promise<Ship
   await ensureDbInitialized()
   const db = getDb()
   const res = await db.execute({
-    sql: 'SELECT * FROM shipments WHERE client_code = ? ORDER BY created_at DESC',
+    sql: `
+      SELECT s.*, 
+        COALESCE(t.progress, s.progress) as progress,
+        COALESCE(t.is_paused, s.is_paused) as is_paused,
+        COALESCE(t.speed_multiplier, s.speed_multiplier) as speed_multiplier,
+        COALESCE(t.status, s.status) as status
+      FROM shipments s
+      LEFT JOIN shipment_telemetry t ON s.id = t.shipment_id
+      WHERE s.client_code = ?
+      ORDER BY s.created_at DESC
+    `,
     args: [clientCode],
   })
   return res.rows.map(rowToShipment)
@@ -284,7 +312,18 @@ export async function getShipmentByIdOrClientCode(idOrClientCode: string): Promi
   await ensureDbInitialized()
   const db = getDb()
   const res = await db.execute({
-    sql: 'SELECT * FROM shipments WHERE id = ? OR client_code = ? ORDER BY created_at DESC LIMIT 1',
+    sql: `
+      SELECT s.*, 
+        COALESCE(t.progress, s.progress) as progress,
+        COALESCE(t.is_paused, s.is_paused) as is_paused,
+        COALESCE(t.speed_multiplier, s.speed_multiplier) as speed_multiplier,
+        COALESCE(t.status, s.status) as status
+      FROM shipments s
+      LEFT JOIN shipment_telemetry t ON s.id = t.shipment_id
+      WHERE s.id = ? OR s.client_code = ?
+      ORDER BY s.created_at DESC
+      LIMIT 1
+    `,
     args: [idOrClientCode, idOrClientCode],
   })
   if (res.rows.length === 0) return null

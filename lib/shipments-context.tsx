@@ -131,7 +131,17 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return
       const data = await res.json()
       if (data && data.success && Array.isArray(data.shipments) && data.shipments.length > 0) {
-        setShipments(data.shipments)
+        setShipments(prev => {
+          return data.shipments.map((newS: Shipment) => {
+            const existing = prev.find(p => p.id === newS.id)
+            if (!existing) return newS
+            return {
+              ...newS,
+              isPaused: Boolean(newS.isPaused),
+              progress: Number(newS.progress ?? 55),
+            }
+          })
+        })
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data.shipments))
         } catch {}
@@ -175,7 +185,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
             const remote = telemetryMap[s.id]
             if (!remote) return s
 
-            const isPaused = Boolean(remote.is_paused)
+            const isPaused = remote.is_paused === 1 || (remote.is_paused as any) === true || (remote.is_paused as any) === '1'
             const speedMultiplier = remote.speed_multiplier ? Number(remote.speed_multiplier) : (s.speedMultiplier ?? 1)
             const remoteProgress = Number(remote.progress)
             const targetStatus = remote.status || s.status
@@ -183,7 +193,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
             const hasPauseChanged = s.isPaused !== isPaused
             const hasSpeedChanged = s.speedMultiplier !== speedMultiplier
             const hasStatusChanged = Boolean(remote.status && remote.status !== s.status)
-            const hasSignificantProgressDiff = Math.abs(s.progress - remoteProgress) > 1.0
+            const hasProgressChanged = Math.abs(s.progress - remoteProgress) > 0.5
 
             let derivedStatusType = s.statusType
             if (targetStatus) {
@@ -194,7 +204,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
               else if (lower.includes('transit') || lower.includes('convoy') || lower.includes('flight') || lower.includes('air')) derivedStatusType = 'in-flight'
             }
 
-            if (hasStatusChanged || hasPauseChanged || hasSpeedChanged || (isPaused && hasSignificantProgressDiff) || Math.abs(s.progress - remoteProgress) > 3.0) {
+            if (hasStatusChanged || hasPauseChanged || hasSpeedChanged || hasProgressChanged) {
               return {
                 ...s,
                 isPaused,
@@ -263,30 +273,8 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
 
   const selectedShipment = shipments.find(s => s.id === selectedShipmentId) || shipments[0]
 
-  // Global Auto-Cruise animation when enabled by Admin
-  useEffect(() => {
-    if (!simulationSettings.isCruising) return
-
-    const interval = setInterval(() => {
-      setShipments(prev =>
-        prev.map(s => {
-          if (s.statusType === 'delivered' || s.isPaused) return s
-
-          const speed = s.speedMultiplier ?? simulationSettings.cruiseSpeed
-          const increment = (0.2 * speed)
-          let nextProgress = s.progress + increment
-          if (nextProgress > 100) nextProgress = 100
-
-          return {
-            ...s,
-            progress: Number(nextProgress.toFixed(1)),
-          }
-        })
-      )
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [simulationSettings.isCruising, simulationSettings.cruiseSpeed])
+  // Global Auto-Cruise is driven visually on the radar canvas via TrackingMap requestAnimationFrame
+  // and synced cross-device via /api/telemetry, eliminating unsynced local setInterval drifts.
 
   const togglePlayPause = async (id: string, isPausedOverride?: boolean) => {
     const target = shipments.find(s => s.id === id)

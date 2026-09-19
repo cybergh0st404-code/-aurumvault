@@ -356,6 +356,127 @@ export function EditUserConsignmentModal({
     }
   }
 
+  const handleTogglePauseDirect = async (newPaused: boolean) => {
+    setIsPaused(newPaused)
+    setIsBroadcastingStage(true)
+    setBroadcastFeedback(null)
+
+    try {
+      const targetClientCode = clientCode || user.client_code
+      const targetShipId =
+        shipment?.id ||
+        (targetClientCode ? `GOLD-2026-${targetClientCode.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+
+      let derivedStatusType = 'in-flight'
+      if (status.toLowerCase().includes('deliver')) derivedStatusType = 'delivered'
+      else if (status.toLowerCase().includes('custom')) derivedStatusType = 'customs'
+      else if (status.toLowerCase().includes('staging')) derivedStatusType = 'staging'
+
+      // 1. Instant broadcast to /api/telemetry
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          progress,
+          isPaused: newPaused,
+          speedMultiplier,
+          status,
+        }),
+      })
+
+      // 2. Persist to shipments table via /api/admin/users
+      await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          userId: user.id,
+          action: 'update_profile',
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          consignment: {
+            status,
+            statusType: derivedStatusType,
+            progress,
+            isPaused: newPaused,
+            speedMultiplier,
+          },
+        }),
+      })
+
+      setBroadcastFeedback(newPaused ? '✓ Flight frozen on radar (Standby Hold)' : '✓ Flight live tracking resumed (Smooth Cruise)')
+      onSaved()
+      setTimeout(() => setBroadcastFeedback(null), 4500)
+    } catch (err) {
+      console.error('Failed to toggle play/pause:', err)
+      setBroadcastFeedback('⚠️ Toggle error. Try again.')
+    } finally {
+      setIsBroadcastingStage(false)
+    }
+  }
+
+  const handleSpeedDirect = async (newSpeed: 1 | 4 | 10) => {
+    setSpeedMultiplier(newSpeed)
+    setIsBroadcastingStage(true)
+    setBroadcastFeedback(null)
+
+    try {
+      const targetClientCode = clientCode || user.client_code
+      const targetShipId =
+        shipment?.id ||
+        (targetClientCode ? `GOLD-2026-${targetClientCode.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          speedMultiplier: newSpeed,
+        }),
+      })
+
+      setBroadcastFeedback(`✓ Radar speed set to ${newSpeed}x`)
+      onSaved()
+      setTimeout(() => setBroadcastFeedback(null), 4000)
+    } catch (err) {
+      console.error('Failed to update speed:', err)
+    } finally {
+      setIsBroadcastingStage(false)
+    }
+  }
+
+  const handleProgressDirect = async (newProgress: number) => {
+    setProgress(newProgress)
+    try {
+      const targetClientCode = clientCode || user.client_code
+      const targetShipId =
+        shipment?.id ||
+        (targetClientCode ? `GOLD-2026-${targetClientCode.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          progress: newProgress,
+          isPaused,
+          speedMultiplier,
+          status,
+        }),
+      })
+
+      setBroadcastFeedback(`✓ Flight position set to ${newProgress}%`)
+      onSaved()
+      setTimeout(() => setBroadcastFeedback(null), 3500)
+    } catch (err) {
+      console.error('Failed to sync progress:', err)
+    }
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
@@ -1036,6 +1157,8 @@ export function EditUserConsignmentModal({
                     max={100}
                     value={progress}
                     onChange={e => setProgress(Number(e.target.value))}
+                    onPointerUp={e => handleProgressDirect(Number((e.target as HTMLInputElement).value))}
+                    onKeyUp={e => handleProgressDirect(Number((e.target as HTMLInputElement).value))}
                     className="w-full accent-[#dfba6c] h-2 bg-[#202532] rounded-lg cursor-pointer"
                   />
                   <div className="flex justify-between text-[10px] font-mono text-gray-400 mt-1.5">
@@ -1053,7 +1176,8 @@ export function EditUserConsignmentModal({
                     </label>
                     <button
                       type="button"
-                      onClick={() => setIsPaused(!isPaused)}
+                      onClick={() => handleTogglePauseDirect(!isPaused)}
+                      disabled={isBroadcastingStage}
                       className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 text-xs font-mono font-bold transition border shadow-sm ${
                         isPaused
                           ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
@@ -1074,7 +1198,8 @@ export function EditUserConsignmentModal({
                         <button
                           key={spd}
                           type="button"
-                          onClick={() => setSpeedMultiplier(spd)}
+                          onClick={() => handleSpeedDirect(spd)}
+                          disabled={isBroadcastingStage}
                           className={`flex-1 rounded-xl py-2.5 text-xs font-mono font-bold transition border ${
                             speedMultiplier === spd
                               ? 'bg-[#dfba6c] text-black border-[#dfba6c]'

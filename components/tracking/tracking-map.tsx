@@ -88,13 +88,13 @@ export function TrackingMap({
     }
   }, [shipment.speedMultiplier])
 
-  // Continuous animation loop for real-time simulation (Active ONLY in admin preview mode when playing)
+  // Continuous animation loop for real-time simulation
   const lastTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
-    // On client dashboard (showAdminControls === false) or when static stages are active:
-    // Keep vehicle anchored at its authentic progress location instead of looping infinitely!
-    if (!showAdminControls || !isPlaying || isDelivered || isStaged || isCustoms) {
+    // When paused or when static stages are active:
+    // Keep vehicle anchored strictly at its authentic progress location!
+    if (!isPlaying || isDelivered || isStaged || isCustoms) {
       lastTimeRef.current = null
       return
     }
@@ -106,16 +106,16 @@ export function TrackingMap({
         lastTimeRef.current = timestamp
       }
 
-      const deltaMs = timestamp - lastTimeRef.current
+      const deltaMs = Math.min(timestamp - lastTimeRef.current, 100) // cap to prevent large jumps on tab refocus
       lastTimeRef.current = timestamp
 
-      // Real-time advance rate
-      const speedRate = (0.008 * speedMultiplier * deltaMs) / 1000
+      // Real-time advance rate (smooth 60fps translation along bezier curve)
+      const speedRate = (0.012 * speedMultiplier * deltaMs) / 1000
 
       setProgress(prev => {
         let next = prev + speedRate
-        if (next >= 1.0) {
-          next = 0.02
+        if (next >= 0.98) {
+          next = 0.05
         }
         return next
       })
@@ -125,7 +125,7 @@ export function TrackingMap({
 
     animationFrameId = requestAnimationFrame(step)
     return () => cancelAnimationFrame(animationFrameId)
-  }, [showAdminControls, isPlaying, speedMultiplier, isDelivered, isStaged, isCustoms])
+  }, [isPlaying, speedMultiplier, isDelivered, isStaged, isCustoms])
 
   // Periodic sensor telemetry jitter for realistic avionics / transponder ping
   useEffect(() => {
@@ -234,6 +234,14 @@ export function TrackingMap({
       calloutSubtitle: 'Origin Vault Facility • Assay Calibration & Custody Seal Affixed',
       surveillanceText: 'Depository Hold: Origin Vault Release & Dual-Officer Assay Verified',
     }
+  }
+
+  // If paused during transit, display clear Command Standby status
+  if (!isPlaying && !isDelivered && !isStaged && !isCustoms) {
+    stageConfig.statusBadge = 'RADAR STANDBY (TRANSIT PAUSED)'
+    stageConfig.badgeColor = 'text-amber-300 bg-amber-500/15 border-amber-500/30'
+    stageConfig.speed = '0 kts (Command Hold Standby)'
+    stageConfig.surveillanceText = 'Corridor Standby: Radar Tracking Paused by Operations Command'
   }
 
   // Trailing breadcrumbs along path

@@ -83,8 +83,8 @@ export async function upsertShipmentTelemetry(
               status = COALESCE(?, status), 
               status_type = COALESCE(?, status_type),
               updated_at = CURRENT_TIMESTAMP 
-            WHERE id = ?`,
-      args: [progress, is_paused, speed_multiplier, status ?? null, inferredStatusType ?? null, shipmentId],
+            WHERE id = ? OR client_code = ?`,
+      args: [progress, is_paused, speed_multiplier, status ?? null, inferredStatusType ?? null, shipmentId, shipmentId],
     })
   } catch (err) {
     console.warn('Could not update shipments table from telemetry:', err)
