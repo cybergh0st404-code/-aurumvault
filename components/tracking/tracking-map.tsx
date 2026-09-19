@@ -27,7 +27,7 @@ interface TrackingMapProps {
   showAdminControls?: boolean
   onProgressChange?: (newProgress: number) => void
   onPlayPauseChange?: (isPlaying: boolean) => void
-  onSpeedChange?: (speed: 1 | 4 | 10) => void
+  onSpeedChange?: (speed: number) => void
 }
 
 export function TrackingMap({
@@ -43,10 +43,10 @@ export function TrackingMap({
   )
   const isPlaying = shipment.isPaused !== undefined ? !shipment.isPaused : localIsPlaying
 
-  const [localSpeedMultiplier, setLocalSpeedMultiplier] = useState<1 | 4 | 10>(
-    (shipment.speedMultiplier as 1 | 4 | 10) || 1
+  const [localSpeedMultiplier, setLocalSpeedMultiplier] = useState<number>(
+    Number(shipment.speedMultiplier) || 1
   )
-  const speedMultiplier = (shipment.speedMultiplier as 1 | 4 | 10) || localSpeedMultiplier
+  const speedMultiplier = Number(shipment.speedMultiplier || localSpeedMultiplier || 1)
 
   // Determine Operational Mission Stage
   const statusLower = (shipment.status || '').toLowerCase()
@@ -84,7 +84,7 @@ export function TrackingMap({
 
   useEffect(() => {
     if (shipment.speedMultiplier) {
-      setLocalSpeedMultiplier(shipment.speedMultiplier as 1 | 4 | 10)
+      setLocalSpeedMultiplier(Number(shipment.speedMultiplier) || 1)
     }
   }, [shipment.speedMultiplier])
 
@@ -109,8 +109,8 @@ export function TrackingMap({
       const deltaMs = Math.min(timestamp - lastTimeRef.current, 100) // cap to prevent large jumps on tab refocus
       lastTimeRef.current = timestamp
 
-      // Real-time advance rate (smooth 60fps translation along bezier curve)
-      const speedRate = (0.012 * speedMultiplier * deltaMs) / 1000
+      // Real-time advance rate (calm, authentic 60fps translation along flight corridor)
+      const speedRate = (0.003 * speedMultiplier * deltaMs) / 1000
 
       setProgress(prev => {
         let next = prev + speedRate
@@ -545,7 +545,7 @@ export function TrackingMap({
             {/* Speed Multiplier */}
             <div className="flex items-center gap-2 text-[11px] font-mono">
               <span className="text-background/60">Cruise Speed:</span>
-              {([1, 4, 10] as const).map(rate => (
+              {([0.25, 0.5, 1, 2, 4] as const).map(rate => (
                 <button
                   key={rate}
                   onClick={() => {

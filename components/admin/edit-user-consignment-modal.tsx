@@ -102,7 +102,7 @@ export function EditUserConsignmentModal({
   // Radar Telemetry state
   const [progress, setProgress] = useState(55)
   const [isPaused, setIsPaused] = useState(false)
-  const [speedMultiplier, setSpeedMultiplier] = useState<1 | 4 | 10>(1)
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1)
 
   // Status & Feedback
   const [isSaving, setIsSaving] = useState(false)
@@ -167,7 +167,7 @@ export function EditUserConsignmentModal({
 
       setProgress(shipment.progress ?? 55)
       setIsPaused(Boolean(shipment.isPaused))
-      setSpeedMultiplier((shipment.speedMultiplier as 1 | 4 | 10) || 1)
+      setSpeedMultiplier(Number(shipment.speedMultiplier) || 1)
     } else {
       // Default initial consignment values
       setShipperName(user.name || 'Linda S Hudson')
@@ -417,7 +417,7 @@ export function EditUserConsignmentModal({
     }
   }
 
-  const handleSpeedDirect = async (newSpeed: 1 | 4 | 10) => {
+  const handleSpeedDirect = async (newSpeed: number) => {
     setSpeedMultiplier(newSpeed)
     setIsBroadcastingStage(true)
     setBroadcastFeedback(null)
@@ -1193,14 +1193,14 @@ export function EditUserConsignmentModal({
                     <label className="block text-[11px] font-mono text-gray-400 mb-1.5">
                       Radar Sweep Speed Multiplier:
                     </label>
-                    <div className="flex items-center gap-2">
-                      {([1, 4, 10] as const).map(spd => (
+                    <div className="flex items-center gap-1.5">
+                      {([0.25, 0.5, 1, 2, 4] as const).map(spd => (
                         <button
                           key={spd}
                           type="button"
                           onClick={() => handleSpeedDirect(spd)}
                           disabled={isBroadcastingStage}
-                          className={`flex-1 rounded-xl py-2.5 text-xs font-mono font-bold transition border ${
+                          className={`flex-1 rounded-xl py-2 px-1 text-[11px] font-mono font-bold transition border ${
                             speedMultiplier === spd
                               ? 'bg-[#dfba6c] text-black border-[#dfba6c]'
                               : 'bg-[#161a24] text-gray-300 border-[#2a2f3d] hover:bg-[#1e2433]'

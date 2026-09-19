@@ -17,7 +17,7 @@ interface ShipmentsContextType {
   updateShipmentProgress: (id: string, progress: number) => void
   updateShipmentStatus: (id: string, status: string, statusType: Shipment['statusType']) => void
   togglePlayPause: (id: string, isPausedOverride?: boolean) => Promise<void>
-  setSpeedMultiplier: (id: string, speed: 1 | 4 | 10) => Promise<void>
+  setSpeedMultiplier: (id: string, speed: number) => Promise<void>
   addCheckpoint: (id: string, cp: Omit<Checkpoint, 'id'>) => void
   toggleSealTamper: (id: string) => void
   createShipment: (newShipment: Shipment) => void
@@ -305,7 +305,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const setSpeedMultiplier = async (id: string, speed: 1 | 4 | 10) => {
+  const setSpeedMultiplier = async (id: string, speed: number) => {
     const target = shipments.find(s => s.id === id)
 
     const updated = shipments.map(s => {
