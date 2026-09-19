@@ -1,6 +1,7 @@
 import { getDb, ensureDbInitialized } from './database'
 import { Shipment, Checkpoint, SensorTelemetry, AssetManifest } from '../types'
 import { shipmentsData as defaultStaticShipments } from '../shipments-data'
+import { formatDeclaredValue } from '../weight-utils'
 
 export function resolveCoordinates(locationName: string): [number, number] {
   const norm = (locationName || '').toLowerCase()
@@ -279,6 +280,17 @@ export async function getShipmentsByClientCode(clientCode: string): Promise<Ship
   return res.rows.map(rowToShipment)
 }
 
+export async function getShipmentByIdOrClientCode(idOrClientCode: string): Promise<Shipment | null> {
+  await ensureDbInitialized()
+  const db = getDb()
+  const res = await db.execute({
+    sql: 'SELECT * FROM shipments WHERE id = ? OR client_code = ? ORDER BY created_at DESC LIMIT 1',
+    args: [idOrClientCode, idOrClientCode],
+  })
+  if (res.rows.length === 0) return null
+  return rowToShipment(res.rows[0])
+}
+
 export async function createDedicatedShipmentForClient(client: {
   clientCode: string
   name: string
@@ -292,6 +304,7 @@ export async function createDedicatedShipmentForClient(client: {
   shippingWeight?: string
   eta?: string
   destination?: string
+  declaredValue?: string
 }): Promise<Shipment> {
   await ensureDbInitialized()
   const randomSuffix = Math.floor(100000 + Math.random() * 900000)
@@ -457,7 +470,7 @@ export async function createDedicatedShipmentForClient(client: {
       sealNumber: `SEAL-${client.clientCode}-A`,
       assayLab: 'Swiss Precious Metals & Assayer Certification',
       assayCertNumber: `ASSAY-${client.clientCode}`,
-      declaredValue: '$16,355.00 USD',
+      declaredValue: formatDeclaredValue(client.declaredValue || '$16,355.00 USD'),
       underwriter: 'Lloyd’s of London Specie Syndicate #33',
       policyNumber: `LL-SPEC-${Math.floor(10000 + Math.random() * 90000)}-US`,
       securityTier: 'TIER-II DUAL CUSTODY CHARTERED AIR-SPECIE TRANSIT',
@@ -493,7 +506,10 @@ export async function updateShipmentDetails(
   }
 ): Promise<Shipment | null> {
   await ensureDbInitialized()
-  const existing = await getShipmentById(id)
+  let existing = await getShipmentById(id)
+  if (!existing) {
+    existing = await getShipmentByIdOrClientCode(id)
+  }
   if (!existing) return null
 
   const shipperName = updates.shipperName !== undefined ? updates.shipperName : (existing.shipperName || 'Linda S Hudson')
@@ -510,7 +526,15 @@ export async function updateShipmentDetails(
   const eta = updates.eta !== undefined ? updates.eta : existing.eta
 
   const status = updates.status !== undefined ? updates.status : existing.status
-  const statusType = updates.statusType !== undefined ? updates.statusType : existing.statusType
+  let statusType = updates.statusType
+  if (!statusType && updates.status) {
+    const sLower = updates.status.toLowerCase()
+    if (sLower.includes('deliver')) statusType = 'delivered'
+    else if (sLower.includes('custom')) statusType = 'customs'
+    else if (sLower.includes('staging')) statusType = 'staging'
+    else if (sLower.includes('transit') || sLower.includes('convoy') || sLower.includes('flight') || sLower.includes('air')) statusType = 'in-flight'
+  }
+  statusType = statusType || existing.statusType
   const progress = updates.progress !== undefined ? Number(updates.progress) : existing.progress
   const isPaused = updates.isPaused !== undefined ? Boolean(updates.isPaused) : (existing.isPaused ?? false)
   const speedMultiplier = updates.speedMultiplier !== undefined ? Number(updates.speedMultiplier) : (existing.speedMultiplier ?? 1)
@@ -531,7 +555,7 @@ export async function updateShipmentDetails(
     description: updates.cargoDescription || `Chartered Gold Specie Flight Package (Shipper: ${shipperName}, Receiver: ${receiverName})`,
     grossWeight: shippingWeight,
     netFineWeight: `${shippingWeight} Fine Specie`,
-    declaredValue: updates.declaredValue || existing.manifest.declaredValue,
+    declaredValue: updates.declaredValue ? formatDeclaredValue(updates.declaredValue) : existing.manifest.declaredValue,
   }
 
   // Update checkpoints to reflect new names & locations

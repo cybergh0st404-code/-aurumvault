@@ -38,11 +38,23 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { shipmentId, progress, isPaused, speedMultiplier, status } = body
+    let { shipmentId, clientCode, progress, isPaused, speedMultiplier, status } = body
+
+    if (!shipmentId && clientCode) {
+      try {
+        const { getShipmentsByClientCode } = await import('@/lib/db/shipment-repository')
+        const userShipments = await getShipmentsByClientCode(clientCode)
+        if (userShipments.length > 0) {
+          shipmentId = userShipments[0].id
+        }
+      } catch (lookupErr) {
+        console.warn('Failed to resolve shipment by clientCode in telemetry:', lookupErr)
+      }
+    }
 
     if (!shipmentId) {
       return NextResponse.json(
-        { success: false, error: 'shipmentId is required' },
+        { success: false, error: 'shipmentId or clientCode is required' },
         { status: 400, headers: NO_CACHE_HEADERS }
       )
     }

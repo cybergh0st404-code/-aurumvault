@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useShipments } from '@/lib/shipments-context'
 import { Shipment, Checkpoint } from '@/lib/types'
+import { parseDeclaredValue, formatDeclaredValue } from '@/lib/weight-utils'
 import { TrackingMap } from './tracking/tracking-map'
 import { useAuth } from '@/lib/auth-context'
 import { EditUserConsignmentModal } from './admin/edit-user-consignment-modal'
@@ -153,11 +154,13 @@ export function AdminCommandCenter() {
     deleteShipment,
     quoteInquiries,
     updateQuoteStatus,
+    vaultHoldings,
     simulationSettings,
     setSimulationSettings,
     resetToDefaults,
     updateShipmentDetails,
     refreshShipmentsFromServer,
+    refreshVaultHoldingsFromServer,
   } = useShipments()
 
   const { user, role, logout, quickLogin, login } = useAuth()
@@ -184,6 +187,9 @@ export function AdminCommandCenter() {
   const [newDestination, setNewDestination] = useState('Kentucky')
   const [newShippingWeight, setNewShippingWeight] = useState('93.9 g')
   const [newEta, setNewEta] = useState('17/09/26')
+  const [newVaultedLots, setNewVaultedLots] = useState<number>(1)
+  const [newVaultFacility, setNewVaultFacility] = useState('Geneva Freeport Deep Depository Tier-IV')
+  const [newConsignmentDeclaredValue, setNewConsignmentDeclaredValue] = useState('$16,355.00 USD')
 
   const [activeTab, setActiveTab] = useState<'fleet' | 'dispatch' | 'quotes' | 'sensors' | 'users' | 'notices'>('fleet')
   const [filter, setFilter] = useState('all')
@@ -288,6 +294,10 @@ export function AdminCommandCenter() {
           clientCode: newUserClientCode || undefined,
           organization: newUserOrg || (newUserRole === 'admin' ? 'AurumVault Federal Operations Command' : 'Swiss Private Depository Client'),
           securityClearance: newUserClearance || (newUserRole === 'admin' ? 'LEVEL-V SWISS AIRSPACE COMMAND' : 'ALLOCATED VAULT DEPOSITOR'),
+          vaultedLots: newVaultedLots,
+          vaultFacility: newVaultFacility,
+          declaredValue: formatDeclaredValue(newConsignmentDeclaredValue),
+          declaredValueUSD: parseDeclaredValue(newConsignmentDeclaredValue),
           consignment: newUserRole === 'client' ? {
             shipperName: newShipperName || newUserName,
             origin: newOrigin || 'Indiana',
@@ -299,12 +309,15 @@ export function AdminCommandCenter() {
             destination: newDestination || 'Kentucky',
             shippingWeight: newShippingWeight || '93.9 g',
             eta: newEta || '17/09/26',
+            vaultedLots: newVaultedLots,
+            vaultFacility: newVaultFacility,
+            declaredValue: formatDeclaredValue(newConsignmentDeclaredValue),
           } : undefined,
         }),
       })
       const data = await res.json()
       if (data.success) {
-        setUserActionFeedback('✓ New user credentials and dedicated consignment committed to SQLite!')
+        setUserActionFeedback('✓ New user credentials, dedicated consignment, and vaulted holdings committed to SQLite!')
         setNewUserName('')
         setNewUserEmail('')
         setNewUserPassword('')
@@ -312,10 +325,14 @@ export function AdminCommandCenter() {
         setNewUserOrg('')
         setNewUserClearance('')
         setNewShipperName('')
+        setNewConsignmentDeclaredValue('$16,355.00 USD')
         setExpandConsignmentConfig(false)
         fetchUsers()
         if (refreshShipmentsFromServer) {
           refreshShipmentsFromServer()
+        }
+        if (refreshVaultHoldingsFromServer) {
+          refreshVaultHoldingsFromServer()
         }
         setTimeout(() => setUserActionFeedback(null), 5000)
       } else {
@@ -1110,7 +1127,10 @@ export function AdminCommandCenter() {
                       )
                     })}
                     {(() => {
-                      const clientUser = dbUsers.find(u => u.client_code && u.client_code === activeShipment.clientCode)
+                      const clientUser = dbUsers.find(u => 
+                        (u.client_code && activeShipment.clientCode && u.client_code === activeShipment.clientCode) ||
+                        (u.name && activeShipment.shipperName && u.name.toLowerCase() === activeShipment.shipperName.toLowerCase())
+                      )
                       if (clientUser) {
                         return (
                           <button
@@ -2393,11 +2413,47 @@ export function AdminCommandCenter() {
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
                               />
                             </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Declared Specie Value (USD)</label>
+                              <input
+                                type="text"
+                                value={newConsignmentDeclaredValue}
+                                onChange={e => setNewConsignmentDeclaredValue(e.target.value)}
+                                placeholder="$16,355.00 USD"
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Vaulted Lots (Parcels)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={newVaultedLots}
+                                onChange={e => setNewVaultedLots(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Depository Vault Facility</label>
+                              <select
+                                value={newVaultFacility}
+                                onChange={e => setNewVaultFacility(e.target.value)}
+                                className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-sans"
+                              >
+                                <option value="Geneva Freeport Deep Depository Tier-IV">Geneva Freeport Deep Depository Tier-IV (Geneva)</option>
+                                <option value="Zurich Freeport High-Security Vault Complex B-12">Zurich Freeport Complex B-12 (Zurich)</option>
+                                <option value="Midwest Inter-State Transit Hold (Hanover Park / Indiana)">Midwest Specie Depository (Hanover Park / Indiana)</option>
+                                <option value="LBMA Bank of England Secure Vault Corridor">LBMA Bank of England Corridor (London)</option>
+                                <option value="Singapore Le Freeport Sector 4 Specie Depository">Singapore Le Freeport Sector 4 (Singapore)</option>
+                                <option value="Manhattan 5th Ave Private Vaults">Manhattan 5th Ave Private Vaults (New York)</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
                       ) : (
                         <p className="text-[11px] text-gray-400 font-mono">
-                          Default route (<span className="text-white">Indiana ➔ Kentucky</span>, Shipper: <span className="text-white">{newUserName || 'Client'}</span>, Receiver: <span className="text-white">Chris Bucksath</span>, Weight: <span className="text-white">93.9 g</span>, ETA: <span className="text-white">17/09/26</span>) will be provisioned. You can modify these anytime via &quot;Edit Details &amp; Radar&quot;.
+                          Default route (<span className="text-white">Indiana ➔ Kentucky</span>, Shipper: <span className="text-white">{newUserName || 'Client'}</span>, Receiver: <span className="text-white">Chris Bucksath</span>, Weight: <span className="text-white">93.9 g</span>, <span className="text-[#dfba6c]">1 Vaulted Lot</span>) will be provisioned. You can modify these anytime via &quot;Edit Details &amp; Radar&quot;.
                         </p>
                       )}
                     </div>
@@ -3107,10 +3163,14 @@ export function AdminCommandCenter() {
           }}
           user={selectedUserForEdit}
           shipment={shipments.find(s => s.clientCode === selectedUserForEdit.client_code)}
+          vaultHoldings={vaultHoldings.filter(h => h.clientCode === selectedUserForEdit.client_code)}
           onSaved={() => {
             fetchUsers()
             if (refreshShipmentsFromServer) {
               refreshShipmentsFromServer()
+            }
+            if (refreshVaultHoldingsFromServer) {
+              refreshVaultHoldingsFromServer()
             }
           }}
         />

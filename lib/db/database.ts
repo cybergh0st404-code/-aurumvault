@@ -110,6 +110,10 @@ export async function ensureDbInitialized(): Promise<void> {
     // Ensure shipments table is created and seeded with sovereign consignments
     const { ensureShipmentsTable } = await import('./shipment-repository')
     await ensureShipmentsTable()
+
+    // Ensure vault_holdings table is created and seeded with sovereign bullion lots
+    const { ensureVaultHoldingsTable } = await import('./vault-repository')
+    await ensureVaultHoldingsTable()
   })()
 
   return initPromise

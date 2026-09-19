@@ -64,6 +64,32 @@ export async function upsertShipmentTelemetry(
     args: [shipmentId, progress, is_paused, speed_multiplier, status, updated_at],
   })
 
+  // Synchronize shipments table so that both tables stay strictly in lockstep
+  try {
+    let inferredStatusType: string | undefined = undefined
+    if (status) {
+      const sLower = status.toLowerCase()
+      if (sLower.includes('deliver')) inferredStatusType = 'delivered'
+      else if (sLower.includes('custom')) inferredStatusType = 'customs'
+      else if (sLower.includes('staging')) inferredStatusType = 'staging'
+      else if (sLower.includes('transit') || sLower.includes('convoy') || sLower.includes('flight') || sLower.includes('air')) inferredStatusType = 'in-flight'
+    }
+
+    await db.execute({
+      sql: `UPDATE shipments SET 
+              progress = ?, 
+              is_paused = ?, 
+              speed_multiplier = ?, 
+              status = COALESCE(?, status), 
+              status_type = COALESCE(?, status_type),
+              updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?`,
+      args: [progress, is_paused, speed_multiplier, status ?? null, inferredStatusType ?? null, shipmentId],
+    })
+  } catch (err) {
+    console.warn('Could not update shipments table from telemetry:', err)
+  }
+
   return {
     shipment_id: shipmentId,
     progress,

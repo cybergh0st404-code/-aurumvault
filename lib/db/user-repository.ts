@@ -85,6 +85,7 @@ export async function createUser(data: {
     shippingWeight?: string
     eta?: string
     destination?: string
+    declaredValue?: string
   }
 }): Promise<SafeUserRecord> {
   await ensureDbInitialized()
@@ -136,6 +137,10 @@ export async function createUser(data: {
   if (data.role === 'client' && clientCode) {
     try {
       const { createDedicatedShipmentForClient } = await import('./shipment-repository')
+      const rawVal = (data as any).declaredValueUSD || data.consignment?.declaredValue
+      const declaredUSD = rawVal ? parseFloat(String(rawVal).replace(/[^0-9.]/g, '')) || 16355 : 16355
+      const declaredStr = data.consignment?.declaredValue || (rawVal ? `$${declaredUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD` : '$16,355.00 USD')
+
       await createDedicatedShipmentForClient({
         clientCode,
         name: data.name.trim(),
@@ -149,9 +154,28 @@ export async function createUser(data: {
         shippingWeight: data.consignment?.shippingWeight,
         eta: data.consignment?.eta,
         destination: data.consignment?.destination,
+        declaredValue: declaredStr,
       })
     } catch (err) {
       console.error('Failed to auto-create client shipment in SQLite:', err)
+    }
+
+    // Also auto-provision client's dedicated vaulted bullion lot(s) in SQLite
+    try {
+      const rawVal = (data as any).declaredValueUSD || data.consignment?.declaredValue
+      const declaredUSD = rawVal ? parseFloat(String(rawVal).replace(/[^0-9.]/g, '')) || 16355 : 16355
+
+      const { syncClientVaultHoldings } = await import('./vault-repository')
+      await syncClientVaultHoldings({
+        clientCode,
+        clientName: data.name.trim(),
+        lotCount: (data as any).vaultedLots ? Number((data as any).vaultedLots) : 1,
+        goldWeight: data.consignment?.shippingWeight || '93.9 g',
+        vaultFacility: (data as any).vaultFacility || 'Geneva Freeport Deep Depository Tier-IV',
+        declaredValueUSD: declaredUSD,
+      })
+    } catch (err) {
+      console.error('Failed to auto-create client vault holding in SQLite:', err)
     }
   }
 

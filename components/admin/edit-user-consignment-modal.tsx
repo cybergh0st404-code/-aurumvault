@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   X,
   Shield,
@@ -22,10 +22,14 @@ import {
   ArrowRight,
   Sparkles,
   Building,
+  Building2,
+  Coins,
+  Layers,
   KeyRound,
   FileText,
 } from 'lucide-react'
-import { Shipment } from '@/lib/types'
+import { Shipment, VaultHolding } from '@/lib/types'
+import { parseWeightToOzt, formatGoldWeight, formatDeclaredValue, parseDeclaredValue } from '@/lib/weight-utils'
 
 export interface DbUserRecordForModal {
   id: string
@@ -48,6 +52,7 @@ interface EditUserConsignmentModalProps {
   onClose: () => void
   user: DbUserRecordForModal | null
   shipment?: Shipment | null
+  vaultHoldings?: VaultHolding[]
   onSaved: () => void
 }
 
@@ -56,6 +61,7 @@ export function EditUserConsignmentModal({
   onClose,
   user,
   shipment,
+  vaultHoldings = [],
   onSaved,
 }: EditUserConsignmentModalProps) {
   if (!isOpen || !user) return null
@@ -88,6 +94,11 @@ export function EditUserConsignmentModal({
   const [custodyOfficer, setCustodyOfficer] = useState('Chief Flight Marshal D. Miller (ID: #US-AIR-410)')
   const [status, setStatus] = useState('In Transit — Chartered Air-Specie Corridor')
 
+  // Depository Vault & Bullion Lots state (supports fluid backspacing & string while typing)
+  const [vaultedLots, setVaultedLots] = useState<number | string>(1)
+  const [vaultFacility, setVaultFacility] = useState('Geneva Freeport Deep Depository Tier-IV')
+  const [bullionTitle, setBullionTitle] = useState('')
+
   // Radar Telemetry state
   const [progress, setProgress] = useState(55)
   const [isPaused, setIsPaused] = useState(false)
@@ -96,11 +107,28 @@ export function EditUserConsignmentModal({
   // Status & Feedback
   const [isSaving, setIsSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'consignment' | 'radar' | 'profile'>('consignment')
+  const [activeTab, setActiveTab] = useState<'consignment' | 'vault' | 'radar' | 'profile'>('consignment')
 
-  // Initialize fields from existing shipment or intelligent defaults
+  // Live Telemetry Broadcast state
+  const [broadcastFeedback, setBroadcastFeedback] = useState<string | null>(null)
+  const [isBroadcastingStage, setIsBroadcastingStage] = useState(false)
+
+  // Track initialization key so background telemetry polling (every 1.5s) does NOT overwrite active edits!
+  const lastInitializedKeyRef = useRef<string | null>(null)
+
+  // Initialize fields from existing shipment or intelligent defaults ONCE when modal is opened for this user
   useEffect(() => {
-    if (!user) return
+    if (!isOpen || !user) {
+      lastInitializedKeyRef.current = null
+      return
+    }
+
+    const initKey = `${user.id}`
+    if (lastInitializedKeyRef.current === initKey) {
+      // Already initialized for this active modal session; do not wipe out admin's typing!
+      return
+    }
+    lastInitializedKeyRef.current = initKey
 
     setName(user.name || '')
     setEmail(user.email || '')
@@ -108,6 +136,16 @@ export function EditUserConsignmentModal({
     setOrganization(user.organization || 'Swiss Private Depository Client')
     setSecurityClearance(user.security_clearance || 'ALLOCATED SOVEREIGN DEPOSITOR')
     setClientCode(user.client_code || `CLIENT-${user.name.split(' ').pop()?.toUpperCase() || 'VAULT'}`)
+
+    if (vaultHoldings && vaultHoldings.length > 0) {
+      setVaultedLots(vaultHoldings.length)
+      setVaultFacility(vaultHoldings[0].vaultFacility || 'Geneva Freeport Deep Depository Tier-IV')
+      setBullionTitle(vaultHoldings[0].assetTitle || 'Allocated Investment-Grade Specie Package')
+    } else {
+      setVaultedLots(1)
+      setVaultFacility('Geneva Freeport Deep Depository Tier-IV')
+      setBullionTitle('Allocated Investment-Grade Specie Package')
+    }
 
     if (shipment) {
       setShipperName(shipment.shipperName || user.name || 'Linda S Hudson')
@@ -152,7 +190,171 @@ export function EditUserConsignmentModal({
       setIsPaused(false)
       setSpeedMultiplier(1)
     }
-  }, [user, shipment])
+  }, [isOpen, user?.id])
+
+  const MISSION_STAGES = [
+    {
+      label: 'In Transit — Chartered Air-Specie Corridor',
+      type: 'in-flight' as const,
+      progress: 60,
+      shortTitle: 'Airborne Flight',
+      description: 'Dedicated air corridor flight transit with continuous satellite transponder downlinks.',
+      badgeClass: 'bg-[#dfba6c]/15 border-[#dfba6c]/30 text-[#dfba6c]',
+    },
+    {
+      label: 'Vault Staging & Assay Verified',
+      type: 'staging' as const,
+      progress: 15,
+      shortTitle: 'Vault Staging',
+      description: 'Subterranean staging vault release & dual-officer bar assay verification.',
+      badgeClass: 'bg-blue-500/15 border-blue-500/30 text-blue-300',
+    },
+    {
+      label: 'In Transit — Armored Ground Convoy',
+      type: 'in-flight' as const,
+      progress: 35,
+      shortTitle: 'Armored Convoy',
+      description: 'Level-B6 armored carrier inter-state ground transit under dual-armed escort.',
+      badgeClass: 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+    },
+    {
+      label: 'Bonded Customs Clearance in Progress',
+      type: 'customs' as const,
+      progress: 85,
+      shortTitle: 'Customs Hold',
+      description: 'Diplomatic / bonded federal airside customs clearance & seal validation.',
+      badgeClass: 'bg-orange-500/15 border-orange-500/30 text-orange-300',
+    },
+    {
+      label: 'Delivered — Verified Handover Complete',
+      type: 'delivered' as const,
+      progress: 100,
+      shortTitle: 'Delivered Handover',
+      description: 'Dual biometric signature confirmed. Final physical parcel handover complete.',
+      badgeClass: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    },
+  ]
+
+  const handleSelectStage = async (stage: (typeof MISSION_STAGES)[number]) => {
+    setStatus(stage.label)
+    setProgress(stage.progress)
+    const shouldPause = stage.type === 'delivered'
+    if (shouldPause) {
+      setIsPaused(true)
+    }
+
+    setIsBroadcastingStage(true)
+    setBroadcastFeedback(null)
+
+    try {
+      const targetClientCode = clientCode || user.client_code
+      const targetShipId =
+        shipment?.id ||
+        (targetClientCode ? `GOLD-2026-${targetClientCode.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+
+      // 1. Broadcast immediately to /api/telemetry
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          progress: stage.progress,
+          isPaused: shouldPause ? true : isPaused,
+          speedMultiplier,
+          status: stage.label,
+        }),
+      })
+
+      // 2. Persist to shipments table via /api/admin/users
+      await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          userId: user.id,
+          action: 'update_profile',
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          consignment: {
+            status: stage.label,
+            statusType: stage.type,
+            progress: stage.progress,
+            isPaused: shouldPause ? true : isPaused,
+          },
+        }),
+      })
+
+      setBroadcastFeedback(`✓ Live on client radar: ${stage.label}`)
+      onSaved()
+      setTimeout(() => setBroadcastFeedback(null), 4500)
+    } catch (err) {
+      console.error('Failed to broadcast stage:', err)
+      setBroadcastFeedback('⚠️ Broadcast error. Saved locally.')
+    } finally {
+      setIsBroadcastingStage(false)
+    }
+  }
+
+  const handleBroadcastCurrentRadarState = async () => {
+    setIsBroadcastingStage(true)
+    setBroadcastFeedback(null)
+
+    try {
+      const targetClientCode = clientCode || user.client_code
+      const targetShipId =
+        shipment?.id ||
+        (targetClientCode ? `GOLD-2026-${targetClientCode.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+
+      let derivedStatusType = 'in-flight'
+      if (status.toLowerCase().includes('deliver')) derivedStatusType = 'delivered'
+      else if (status.toLowerCase().includes('custom')) derivedStatusType = 'customs'
+      else if (status.toLowerCase().includes('staging')) derivedStatusType = 'staging'
+
+      // 1. Broadcast to /api/telemetry
+      await fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          progress,
+          isPaused,
+          speedMultiplier,
+          status,
+        }),
+      })
+
+      // 2. Persist to shipments table via /api/admin/users
+      await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          userId: user.id,
+          action: 'update_profile',
+          shipmentId: targetShipId,
+          clientCode: targetClientCode,
+          consignment: {
+            status,
+            statusType: derivedStatusType,
+            progress,
+            isPaused,
+            speedMultiplier,
+          },
+        }),
+      })
+
+      setBroadcastFeedback(`✓ Telemetry broadcast live: ${status} (${progress}%)`)
+      onSaved()
+      setTimeout(() => setBroadcastFeedback(null), 4500)
+    } catch (err) {
+      console.error('Failed to broadcast radar state:', err)
+      setBroadcastFeedback('⚠️ Broadcast failed. Check network.')
+    } finally {
+      setIsBroadcastingStage(false)
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,7 +362,16 @@ export function EditUserConsignmentModal({
     setFeedback(null)
 
     try {
-      // 1. Update user profile and consignment in one coordinated API call
+      const formattedVal = formatDeclaredValue(declaredValue)
+      const numericVal = parseDeclaredValue(declaredValue)
+      const finalLots = Math.max(1, Number(vaultedLots) || 1)
+
+      let derivedStatusType = 'in-flight'
+      if (status.toLowerCase().includes('deliver')) derivedStatusType = 'delivered'
+      else if (status.toLowerCase().includes('custom')) derivedStatusType = 'customs'
+      else if (status.toLowerCase().includes('staging')) derivedStatusType = 'staging'
+
+      // 1. Update user profile, consignment, and vaulted lots in one coordinated API call
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -175,6 +386,10 @@ export function EditUserConsignmentModal({
           securityClearance,
           clientCode,
           shipmentId: shipment?.id,
+          vaultedLots: finalLots,
+          vaultFacility,
+          goldWeight: shippingWeight,
+          declaredValueUSD: numericVal,
           consignment: {
             shipperName,
             origin,
@@ -185,14 +400,17 @@ export function EditUserConsignmentModal({
             receiverAddress,
             destination,
             shippingWeight,
+            vaultedLots: finalLots,
+            vaultFacility,
             eta,
             status,
+            statusType: derivedStatusType,
             progress,
             isPaused,
             speedMultiplier,
             carrierFlightNumber,
             custodyOfficer,
-            declaredValue,
+            declaredValue: formattedVal,
           },
         }),
       })
@@ -203,10 +421,51 @@ export function EditUserConsignmentModal({
         throw new Error(data.error || 'Failed to commit updates to database')
       }
 
+      // 2. Direct synchronization with /api/vault-holdings for immediate reflection
+      try {
+        await fetch('/api/vault-holdings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientCode: clientCode || user.client_code,
+            lotCount: finalLots,
+            goldWeight: shippingWeight,
+            declaredValueUSD: numericVal,
+            vaultFacility,
+          }),
+        })
+      } catch (vaultErr) {
+        console.warn('Vault holdings sync fallback:', vaultErr)
+      }
+
+      // 3. Direct broadcast to /api/telemetry for real-time radar sync
+      const targetShipId = shipment?.id || (data.user?.client_code ? `GOLD-2026-${data.user.client_code.replace(/[^A-Z0-9]/gi, '')}` : undefined)
+      if (targetShipId) {
+        try {
+          await fetch('/api/telemetry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shipmentId: targetShipId,
+              clientCode: clientCode || user.client_code,
+              progress,
+              isPaused,
+              speedMultiplier,
+              status,
+            }),
+          })
+        } catch (telemetryErr) {
+          console.warn('Telemetry broadcast fallback:', telemetryErr)
+        }
+      }
+
       setFeedback({
         type: 'success',
-        message: '✓ User account & dedicated consignment ledger updated successfully in SQLite!',
+        message: '✓ User account, dedicated consignment, and vaulted lots ledger updated successfully in SQLite!',
       })
+
+      // Reset initialized key so next open gets freshly persisted data
+      lastInitializedKeyRef.current = null
 
       onSaved()
       setTimeout(() => {
@@ -269,6 +528,22 @@ export function EditUserConsignmentModal({
           >
             <Plane size={15} />
             <span>Consignment & Shipper/Receiver</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('vault')}
+            className={`flex items-center gap-2 border-b-2 py-3.5 px-4 font-bold transition ${
+              activeTab === 'vault'
+                ? 'border-[#dfba6c] text-[#dfba6c]'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Coins size={15} />
+            <span>Vaulted Lots & Gold Weight</span>
+            <span className="rounded-full bg-[#dfba6c]/20 px-2 py-0.2 text-[10px] text-[#dfba6c] font-bold">
+              {Math.max(1, Number(vaultedLots) || 1)}
+            </span>
           </button>
 
           <button
@@ -465,7 +740,7 @@ export function EditUserConsignmentModal({
                 <div className="grid gap-4 sm:grid-cols-3 text-xs">
                   <div>
                     <label className="block text-[11px] font-mono text-gray-400 mb-1">
-                      Shipping Weight:
+                      Fine Gold / Shipping Weight:
                     </label>
                     <input
                       type="text"
@@ -475,6 +750,32 @@ export function EditUserConsignmentModal({
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
                       required
                     />
+                    <div className="mt-1 text-[10px] text-[#dfba6c] font-mono flex items-center gap-1 truncate">
+                      <span>➔ ~{formatGoldWeight(parseWeightToOzt(shippingWeight)).oztStr} ({formatGoldWeight(parseWeightToOzt(shippingWeight)).kgStr})</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Vaulted Lots (Audited Parcels):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={vaultedLots}
+                      onChange={e => setVaultedLots(e.target.value)}
+                      onBlur={() => {
+                        if (vaultedLots === '' || Number(vaultedLots) < 1) {
+                          setVaultedLots(1)
+                        }
+                      }}
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
+                      required
+                    />
+                    <div className="mt-1 text-[10px] text-gray-400 font-mono">
+                      <span>Client Dashboard: <strong className="text-[#dfba6c]">{Math.max(1, Number(vaultedLots) || 1)} Audited Parcels</strong></span>
+                    </div>
                   </div>
 
                   <div>
@@ -500,8 +801,11 @@ export function EditUserConsignmentModal({
                       value={declaredValue}
                       onChange={e => setDeclaredValue(e.target.value)}
                       placeholder="e.g. $16,355.00 USD"
-                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono"
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
                     />
+                    <div className="mt-1 text-[10px] text-[#dfba6c] font-mono flex items-center gap-1 truncate">
+                      <span>➔ {formatDeclaredValue(declaredValue)}</span>
+                    </div>
                   </div>
 
                   <div>
@@ -517,7 +821,25 @@ export function EditUserConsignmentModal({
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Depository Vault Complex:
+                    </label>
+                    <select
+                      value={vaultFacility}
+                      onChange={e => setVaultFacility(e.target.value)}
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans text-xs"
+                    >
+                      <option value="Geneva Freeport Deep Depository Tier-IV">Geneva Freeport Deep Depository Tier-IV (Geneva)</option>
+                      <option value="Zurich Freeport High-Security Vault Complex B-12">Zurich Freeport Complex B-12 (Zurich)</option>
+                      <option value="Midwest Inter-State Transit Hold (Hanover Park / Indiana)">Midwest Specie Depository (Hanover Park / Indiana)</option>
+                      <option value="LBMA Bank of England Secure Vault Corridor">LBMA Bank of England Corridor (London)</option>
+                      <option value="Singapore Le Freeport Sector 4 Specie Depository">Singapore Le Freeport Sector 4 (Singapore)</option>
+                      <option value="Manhattan 5th Ave Private Vaults">Manhattan 5th Ave Private Vaults (New York)</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-3">
                     <label className="block text-[11px] font-mono text-gray-400 mb-1">
                       Custody Escort Lead Officer:
                     </label>
@@ -529,6 +851,161 @@ export function EditUserConsignmentModal({
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
                     />
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: ALLOCATED VAULT & BULLION LOTS */}
+          {activeTab === 'vault' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-[#262c3b] bg-[#141824] p-4 text-xs">
+                <p className="text-gray-300 leading-relaxed font-sans">
+                  Configure this client's <strong className="text-white">Allocated Bullion Depository Holdings</strong>. Changing the <strong className="text-[#dfba6c]">Vaulted Lots</strong> count and <strong className="text-[#dfba6c]">Gold Weight</strong> will update their physical custody ledger in SQLite, reflect on their Client Portal, and update their fine gold total ({formatGoldWeight(parseWeightToOzt(shippingWeight)).summary}).
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-[#242833] bg-[#12151e] p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-[#242833] pb-3">
+                  <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#dfba6c] uppercase tracking-wider">
+                    <Coins size={15} />
+                    <span>Allocated Bullion Holdings & Parcel Count</span>
+                  </div>
+                  <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-0.5 text-[10px] font-mono font-bold text-emerald-400">
+                    ● ALLOCATED PROPERTY
+                  </span>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Vaulted Lots (Audited Parcels Count):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={vaultedLots}
+                      onChange={e => setVaultedLots(e.target.value)}
+                      onBlur={() => {
+                        if (vaultedLots === '' || Number(vaultedLots) < 1) {
+                          setVaultedLots(1)
+                        }
+                      }}
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
+                      required
+                    />
+                    <p className="text-[10px] text-gray-400 font-mono mt-1">
+                      Displays on Client Dashboard as: <strong className="text-[#dfba6c]">{Math.max(1, Number(vaultedLots) || 1)} Audited Parcels</strong>
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Total Fine Gold Weight:
+                    </label>
+                    <input
+                      type="text"
+                      value={shippingWeight}
+                      onChange={e => setShippingWeight(e.target.value)}
+                      placeholder="e.g. 93.9 g"
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
+                      required
+                    />
+                    <p className="text-[10px] text-[#dfba6c] font-mono mt-1 flex items-center gap-1">
+                      <Sparkles size={11} />
+                      <span>{formatGoldWeight(parseWeightToOzt(shippingWeight)).summary}</span>
+                    </p>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Vault Depository Facility:
+                    </label>
+                    <select
+                      value={vaultFacility}
+                      onChange={e => setVaultFacility(e.target.value)}
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans text-xs"
+                    >
+                      <option value="Geneva Freeport Deep Depository Tier-IV">Geneva Freeport Deep Depository Tier-IV (Geneva, Switzerland)</option>
+                      <option value="Zurich Freeport High-Security Vault Complex B-12">Zurich Freeport Complex B-12 (Zurich, Switzerland)</option>
+                      <option value="Midwest Inter-State Transit Hold (Hanover Park / Indiana)">Midwest Inter-State Transit Hold (Hanover Park / Indiana, USA)</option>
+                      <option value="LBMA Bank of England Secure Vault Corridor">LBMA Bank of England Secure Vault Corridor (London, UK)</option>
+                      <option value="Singapore Le Freeport Sector 4 Specie Depository">Singapore Le Freeport Sector 4 Specie Depository (Singapore)</option>
+                      <option value="Manhattan 5th Ave Private Vaults">Manhattan 5th Ave Private Vaults (New York, USA)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Bullion Asset Title / Description:
+                    </label>
+                    <input
+                      type="text"
+                      value={bullionTitle}
+                      onChange={e => setBullionTitle(e.target.value)}
+                      placeholder="e.g. Allocated 93.9g Investment-Grade Specie Package"
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-gray-400 mb-1">
+                      Total Declared Valuation (USD):
+                    </label>
+                    <input
+                      type="text"
+                      value={declaredValue}
+                      onChange={e => setDeclaredValue(e.target.value)}
+                      placeholder="e.g. $16,355.00 USD"
+                      className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
+                    />
+                    <div className="mt-1 text-[10px] text-[#dfba6c] font-mono flex items-center gap-1 truncate">
+                      <span>➔ Per Lot: ${((parseDeclaredValue(declaredValue)) / Math.max(1, Number(vaultedLots) || 1)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Parcel preview cards */}
+                <div className="mt-4 pt-4 border-t border-[#242833]">
+                  {(() => {
+                    const finalLotsCount = Math.max(1, Number(vaultedLots) || 1)
+                    return (
+                      <>
+                        <span className="text-[11px] font-mono text-gray-400 block mb-2 font-bold uppercase tracking-wider">
+                          Client Ledger Preview ({finalLotsCount} Audited {finalLotsCount === 1 ? 'Parcel' : 'Parcels'}):
+                        </span>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {Array.from({ length: Math.min(finalLotsCount, 4) }).map((_, idx) => {
+                            const parcelOzt = (parseWeightToOzt(shippingWeight) / finalLotsCount).toFixed(2)
+                            const parcelKg = ((parseWeightToOzt(shippingWeight) * 0.0311035) / finalLotsCount).toFixed(3)
+                            return (
+                              <div key={idx} className="rounded-xl border border-[#2a2f3d] bg-[#141822] p-3 text-xs space-y-1 font-mono">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[#dfba6c] font-bold">Parcel #{idx + 1}</span>
+                                  <span className="text-emerald-400 text-[10px] font-bold">● VAULTED</span>
+                                </div>
+                                <div className="text-white font-sans text-xs font-semibold truncate">
+                                  {bullionTitle || `Allocated Specie Parcel #${idx + 1}`}
+                                </div>
+                                <div className="text-gray-400 text-[10px]">
+                                  Weight: <strong className="text-white">{parcelOzt} ozt</strong> ({parcelKg} kg)
+                                </div>
+                                <div className="text-gray-500 text-[10px] truncate">
+                                  {vaultFacility.split('(')[0].trim()}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {finalLotsCount > 4 && (
+                          <p className="text-[10px] text-gray-400 font-mono mt-2 text-center">
+                            + {finalLotsCount - 4} additional audited parcels in Swiss Depository Ledger
+                          </p>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
@@ -612,32 +1089,93 @@ export function EditUserConsignmentModal({
                 </div>
               </div>
 
-              {/* Mission Stage Selector */}
-              <div className="rounded-2xl border border-[#242833] bg-[#12151e] p-5 space-y-3">
-                <label className="block text-xs font-mono font-bold text-[#dfba6c] uppercase tracking-wider">
-                  Operational Mission Status Stage:
-                </label>
-                <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                  {[
-                    { label: 'In Transit — Chartered Air-Specie Corridor', type: 'in-flight' },
-                    { label: 'Vault Staging & Assay Verified', type: 'staging' },
-                    { label: 'In Transit — Armored Ground Convoy', type: 'in-flight' },
-                    { label: 'Bonded Customs Clearance in Progress', type: 'customs' },
-                    { label: 'Delivered — Verified Handover Complete', type: 'delivered' },
-                  ].map(stage => (
-                    <button
-                      key={stage.label}
-                      type="button"
-                      onClick={() => setStatus(stage.label)}
-                      className={`p-3 rounded-xl border text-left transition font-mono ${
-                        status === stage.label
-                          ? 'border-[#dfba6c] bg-[#dfba6c]/15 text-[#dfba6c] font-bold'
-                          : 'border-[#242833] bg-[#161a24] text-gray-300 hover:bg-[#1e2330]'
-                      }`}
-                    >
-                      {stage.label}
-                    </button>
-                  ))}
+              {/* Mission Stage Selector with Instant Live Radar Push */}
+              <div className="rounded-2xl border border-[#242833] bg-[#12151e] p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#242833] pb-3">
+                  <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#dfba6c] uppercase tracking-wider">
+                    <Sparkles size={15} />
+                    <span>Operational Mission Status Stage (Click to Broadcast Live)</span>
+                  </div>
+                  <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-[#dfba6c]/15 text-[#dfba6c] border border-[#dfba6c]/30 flex items-center gap-1.5 font-bold">
+                    <span className="size-1.5 rounded-full bg-[#dfba6c] animate-pulse" />
+                    Target Milestone: {progress}%
+                  </span>
+                </div>
+
+                {/* Instant Feedback Alert */}
+                {broadcastFeedback && (
+                  <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 p-3 text-xs text-emerald-300 font-mono flex items-center justify-between animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>{broadcastFeedback}</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400/80 uppercase tracking-widest font-bold">● PUSHED LIVE</span>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400 font-sans leading-relaxed">
+                  Clicking any operational stage below <strong className="text-white">instantly pushes</strong> that status and telemetry progress to the client's dashboard and live radar map in real-time.
+                </p>
+
+                <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                  {MISSION_STAGES.map(stage => {
+                    const isSelected = status === stage.label
+                    return (
+                      <button
+                        key={stage.label}
+                        type="button"
+                        onClick={() => handleSelectStage(stage)}
+                        disabled={isBroadcastingStage}
+                        className={`p-3.5 rounded-xl border text-left transition relative flex flex-col justify-between gap-2 group ${
+                          isSelected
+                            ? 'border-[#dfba6c] bg-[#dfba6c]/15 text-white shadow-lg ring-1 ring-[#dfba6c]/30'
+                            : 'border-[#242833] bg-[#161a24] text-gray-300 hover:bg-[#1e2330] hover:border-[#384154]'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`font-mono text-xs font-bold ${isSelected ? 'text-[#dfba6c]' : 'text-white'}`}>
+                            {stage.shortTitle}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${stage.badgeClass}`}>
+                            {stage.progress}%
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] font-mono text-gray-300 line-clamp-1">
+                          {stage.label}
+                        </div>
+
+                        <p className="text-[10px] text-gray-400 line-clamp-2 leading-relaxed font-sans">
+                          {stage.description}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-[#222735] text-[10px] font-mono">
+                          <span className={isSelected ? 'text-emerald-400 font-bold flex items-center gap-1' : 'text-gray-500'}>
+                            {isSelected ? '● ACTIVE ON CLIENT RADAR' : 'Click to Set & Broadcast Live'}
+                          </span>
+                          <span className="text-[#dfba6c] font-bold group-hover:translate-x-0.5 transition">
+                            ➔
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Manual Push Button */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#242833]">
+                  <p className="text-[11px] text-gray-400 font-mono">
+                    Current Live Setting: <strong className="text-white">{status}</strong> ({progress}%)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleBroadcastCurrentRadarState}
+                    disabled={isBroadcastingStage}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-4 py-2 text-xs font-bold text-black hover:opacity-95 transition shadow-md shrink-0 font-mono"
+                  >
+                    <Sparkles size={14} />
+                    <span>{isBroadcastingStage ? 'Broadcasting to Radar...' : '⚡ Broadcast Live to Client Radar Now'}</span>
+                  </button>
                 </div>
               </div>
 

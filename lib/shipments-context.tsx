@@ -32,6 +32,7 @@ interface ShipmentsContextType {
   resetToDefaults: () => void
   updateShipmentDetails: (id: string, updates: any) => Promise<Shipment | undefined>
   refreshShipmentsFromServer: () => Promise<void>
+  refreshVaultHoldingsFromServer: () => Promise<void>
 }
 
 
@@ -121,6 +122,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     }
 
     refreshShipmentsFromServer()
+    refreshVaultHoldingsFromServer()
   }, [])
 
   const refreshShipmentsFromServer = async () => {
@@ -136,6 +138,22 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       console.warn('Failed to load server shipments:', e)
+    }
+  }
+
+  const refreshVaultHoldingsFromServer = async () => {
+    try {
+      const res = await fetch('/api/vault-holdings', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data && data.success && Array.isArray(data.holdings) && data.holdings.length > 0) {
+        setVaultHoldings(data.holdings)
+        try {
+          localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(data.holdings))
+        } catch {}
+      }
+    } catch (e) {
+      console.warn('Failed to load server vault holdings:', e)
     }
   }
 
@@ -160,18 +178,30 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
             const isPaused = Boolean(remote.is_paused)
             const speedMultiplier = remote.speed_multiplier ? Number(remote.speed_multiplier) : (s.speedMultiplier ?? 1)
             const remoteProgress = Number(remote.progress)
+            const targetStatus = remote.status || s.status
 
             const hasPauseChanged = s.isPaused !== isPaused
             const hasSpeedChanged = s.speedMultiplier !== speedMultiplier
-            const hasSignificantProgressDiff = Math.abs(s.progress - remoteProgress) > 2.0
+            const hasStatusChanged = Boolean(remote.status && remote.status !== s.status)
+            const hasSignificantProgressDiff = Math.abs(s.progress - remoteProgress) > 1.0
 
-            if (hasPauseChanged || hasSpeedChanged || (isPaused && hasSignificantProgressDiff) || Math.abs(s.progress - remoteProgress) > 5.0) {
+            let derivedStatusType = s.statusType
+            if (targetStatus) {
+              const lower = targetStatus.toLowerCase()
+              if (lower.includes('deliver')) derivedStatusType = 'delivered'
+              else if (lower.includes('custom')) derivedStatusType = 'customs'
+              else if (lower.includes('staging')) derivedStatusType = 'staging'
+              else if (lower.includes('transit') || lower.includes('convoy') || lower.includes('flight') || lower.includes('air')) derivedStatusType = 'in-flight'
+            }
+
+            if (hasStatusChanged || hasPauseChanged || hasSpeedChanged || (isPaused && hasSignificantProgressDiff) || Math.abs(s.progress - remoteProgress) > 3.0) {
               return {
                 ...s,
                 isPaused,
                 speedMultiplier,
-                progress: isPaused ? remoteProgress : (hasSignificantProgressDiff ? remoteProgress : s.progress),
-                status: remote.status || s.status,
+                progress: remoteProgress,
+                status: targetStatus,
+                statusType: derivedStatusType,
               }
             }
 
@@ -179,6 +209,8 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
               ...s,
               isPaused,
               speedMultiplier,
+              status: targetStatus,
+              statusType: derivedStatusType,
             }
           })
         )
@@ -189,9 +221,15 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
 
     fetchServerTelemetry()
     const interval = setInterval(fetchServerTelemetry, 1500)
+    const fullSyncInterval = setInterval(() => {
+      refreshShipmentsFromServer()
+      refreshVaultHoldingsFromServer()
+    }, 6000)
+
     return () => {
       isMounted = false
       clearInterval(interval)
+      clearInterval(fullSyncInterval)
     }
   }, [])
 
@@ -514,6 +552,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
         resetToDefaults,
         updateShipmentDetails,
         refreshShipmentsFromServer,
+        refreshVaultHoldingsFromServer,
       }}
     >
       {children}

@@ -52,6 +52,9 @@ export async function POST(request: Request) {
       clientCode,
       organization: organization || 'Swiss Private Depository Client',
       securityClearance,
+      vaultedLots: body.vaultedLots || 1,
+      vaultFacility: body.vaultFacility || 'Geneva Freeport Deep Depository Tier-IV',
+      declaredValueUSD: body.declaredValueUSD || (body.consignment?.declaredValue ? parseFloat(String(body.consignment.declaredValue).replace(/[^0-9.]/g, '')) : undefined),
       consignment: body.consignment || (role === 'client' ? {
         shipperName: body.shipperName || name,
         origin: body.origin || 'Indiana',
@@ -60,11 +63,12 @@ export async function POST(request: Request) {
         receiverName: body.receiverName || 'Chris Bucksath',
         receiverContact: body.receiverContact || '+1 (859) 907-3706',
         receiverAddress: body.receiverAddress || '321 Pimlico Ct Crittenden Ky 41030',
-        shippingWeight: body.shippingWeight || '93.9 g',
+        shippingWeight: body.shippingWeight || body.goldWeight || '93.9 g',
         eta: body.eta || '17/09/26',
         destination: body.destination || 'Kentucky',
+        declaredValue: body.declaredValue || '$16,355.00 USD',
       } : undefined),
-    })
+    } as any)
 
     return NextResponse.json({ success: true, user: created })
   } catch (error: any) {
@@ -106,7 +110,7 @@ export async function PATCH(request: Request) {
       })
 
       // If consignment update payload is present, update user's shipment
-      if (body.consignment || body.shipperName || body.shipmentId || body.receiverName) {
+      if (body.consignment || body.shipperName || body.shipmentId || body.receiverName || body.declaredValue || body.declaredValueUSD) {
         const { updateShipmentDetails, getShipmentsByClientCode, createDedicatedShipmentForClient } = await import('@/lib/db/shipment-repository')
         const clientCode = body.clientCode || updated?.client_code
         if (clientCode) {
@@ -114,6 +118,8 @@ export async function PATCH(request: Request) {
           const targetShipmentId = body.shipmentId || userShipments[0]?.id
 
           const cData = body.consignment || body
+          const declaredVal = cData.declaredValue || body.declaredValue || (body.declaredValueUSD ? `$${Number(body.declaredValueUSD).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD` : undefined)
+
           if (targetShipmentId) {
             await updateShipmentDetails(targetShipmentId, {
               shipperName: cData.shipperName,
@@ -133,7 +139,7 @@ export async function PATCH(request: Request) {
               speedMultiplier: cData.speedMultiplier,
               carrierFlightNumber: cData.carrierFlightNumber,
               custodyOfficer: cData.custodyOfficer,
-              declaredValue: cData.declaredValue,
+              declaredValue: declaredVal,
               cargoDescription: cData.cargoDescription,
             })
           } else {
@@ -150,8 +156,36 @@ export async function PATCH(request: Request) {
               shippingWeight: cData.shippingWeight,
               eta: cData.eta,
               destination: cData.destinationCity || cData.destination,
+              declaredValue: declaredVal,
             })
           }
+        }
+      }
+
+      // Also synchronize client's vaulted lots in SQLite if provided
+      const cClientCode = body.clientCode || updated?.client_code
+      const cConsignment = body.consignment || body
+      const cGoldWeight = body.goldWeight || cConsignment?.shippingWeight
+      const cLots = body.vaultedLots !== undefined ? body.vaultedLots : cConsignment?.vaultedLots
+      const cFacility = body.vaultFacility || cConsignment?.vaultFacility
+      const hasDeclaredValue = body.declaredValueUSD !== undefined || cConsignment?.declaredValue !== undefined || body.declaredValue !== undefined
+
+      if (cClientCode && (cLots !== undefined || cGoldWeight !== undefined || cFacility || hasDeclaredValue)) {
+        try {
+          const rawDeclared = body.declaredValueUSD || cConsignment?.declaredValue || body.declaredValue
+          const parsedValUSD = rawDeclared !== undefined ? parseFloat(String(rawDeclared).replace(/[^0-9.]/g, '')) : undefined
+
+          const { syncClientVaultHoldings } = await import('@/lib/db/vault-repository')
+          await syncClientVaultHoldings({
+            clientCode: cClientCode,
+            clientName: updated?.name || body.name,
+            lotCount: cLots !== undefined ? Number(cLots) : undefined,
+            goldWeight: cGoldWeight,
+            vaultFacility: cFacility,
+            declaredValueUSD: parsedValUSD && !isNaN(parsedValUSD) ? parsedValUSD : undefined,
+          })
+        } catch (vaultErr) {
+          console.error('Failed to sync vault holdings during profile update:', vaultErr)
         }
       }
 
