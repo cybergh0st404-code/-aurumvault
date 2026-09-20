@@ -95,7 +95,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
         const merged = defaultShipments.map(def => {
           const saved = parsed.find(s => s.id === def.id)
           return saved
-            ? { ...def, progress: saved.progress ?? def.progress }
+            ? { ...def, ...saved, progress: saved.progress ?? def.progress }
             : def
         })
         const custom = parsed.filter(s => !defaultShipments.some(def => def.id === s.id))

@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useShipments } from '@/lib/shipments-context'
-import { Shipment, Checkpoint } from '@/lib/types'
+import {
+  Shipment,
+  Checkpoint,
+  STANDARD_LOGISTICS_STAGES,
+  STANDARD_DEPOSITORY_HUBS,
+  IntermediateStop,
+} from '@/lib/types'
 import { parseDeclaredValue, formatDeclaredValue } from '@/lib/weight-utils'
 import { TrackingMap } from './tracking/tracking-map'
 import { useAuth } from '@/lib/auth-context'
@@ -56,6 +62,8 @@ import {
   Edit3,
   Copy,
   CheckCircle,
+  MapPin,
+  CornerDownRight,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -248,6 +256,22 @@ export function AdminCommandCenter() {
     { id: 'users', label: 'User Credentials & Security', icon: <Users size={18} />, badge: dbUsers.length > 0 ? dbUsers.length : undefined },
     { id: 'notices', label: 'Directives & Notices', icon: <Bell size={18} />, badge: activeNoticesCount > 0 ? activeNoticesCount : undefined },
   ]
+
+  // Dynamic Mission Lifecycle & Staging Controller State
+  const [selectedStageId, setSelectedStageId] = useState<string>('stage_interim_staging')
+  const [isCustomStage, setIsCustomStage] = useState<boolean>(false)
+  const [customStageName, setCustomStageName] = useState<string>('')
+  const [customStatusType, setCustomStatusType] = useState<Shipment['statusType']>('staging')
+  const [selectedHubCode, setSelectedHubCode] = useState<string>('GVA-FP')
+  const [isCustomLocation, setIsCustomLocation] = useState<boolean>(false)
+  const [customFacilityName, setCustomFacilityName] = useState<string>('')
+  const [customCity, setCustomCity] = useState<string>('')
+  const [customCode, setCustomCode] = useState<string>('')
+  const [progressMode, setProgressMode] = useState<'maintain' | 'override'>('maintain')
+  const [overrideProgress, setOverrideProgress] = useState<number>(55)
+  const [recordLedgerMilestone, setRecordLedgerMilestone] = useState<boolean>(true)
+  const [isApplyingStage, setIsApplyingStage] = useState<boolean>(false)
+  const [stageFeedbackMsg, setStageFeedbackMsg] = useState<string | null>(null)
 
   // New User Form State
   const [newUserName, setNewUserName] = useState('')
@@ -721,6 +745,171 @@ export function AdminCommandCenter() {
     setActiveTab('dispatch')
   }
 
+  // Synchronize override progress when active shipment changes
+  useEffect(() => {
+    if (activeShipment?.progress !== undefined) {
+      setOverrideProgress(activeShipment.progress)
+    }
+  }, [activeShipment?.id, activeShipment?.progress])
+
+  // Apply Custom or Standard Mission Lifecycle Stage
+  const handleApplyMissionStage = async () => {
+    if (!activeShipment) return
+    setIsApplyingStage(true)
+    setStageFeedbackMsg(null)
+
+    try {
+      const standardStage = STANDARD_LOGISTICS_STAGES.find(s => s.id === selectedStageId)
+      const stageName = isCustomStage
+        ? (customStageName.trim() || 'Custom Mission Stage')
+        : (standardStage?.name || 'Mission Stage')
+      const statusType = isCustomStage
+        ? customStatusType
+        : (standardStage?.statusType || 'in-flight')
+
+      const isStagingMode = statusType === 'staging' || Boolean(standardStage?.isStaging)
+      const isInterimStaging = isStagingMode && (selectedStageId === 'stage_interim_staging' || selectedStageId === 'stage_transit_audit' || isCustomStage)
+
+      // Calculate progress
+      let newProgress: number
+      if (progressMode === 'maintain') {
+        newProgress = activeShipment.progress
+      } else {
+        newProgress = overrideProgress
+      }
+
+      // Build intermediateStop if interim staging
+      let newIntermediateStop: IntermediateStop | null = null
+      if (isInterimStaging) {
+        if (isCustomLocation) {
+          newIntermediateStop = {
+            facility: customFacilityName.trim() || 'Custom Staging Depository',
+            city: customCity.trim() || 'Transit Hub',
+            code: (customCode.trim() || 'INTERIM-VAULT').toUpperCase(),
+            coords: [
+              (activeShipment.origin.coords[0] + activeShipment.destination.coords[0]) / 2,
+              (activeShipment.origin.coords[1] + activeShipment.destination.coords[1]) / 2,
+            ],
+            stagedAtProgress: newProgress,
+            reason: stageName,
+            status: 'active_stage',
+            timestamp: new Date().toLocaleTimeString(),
+          }
+        } else {
+          const hub = STANDARD_DEPOSITORY_HUBS.find(h => h.code === selectedHubCode) || STANDARD_DEPOSITORY_HUBS[1]
+          newIntermediateStop = {
+            facility: hub.name,
+            city: hub.city,
+            country: hub.country,
+            code: hub.code,
+            coords: hub.coords,
+            stagedAtProgress: newProgress,
+            reason: stageName,
+            status: 'active_stage',
+            timestamp: new Date().toLocaleTimeString(),
+          }
+        }
+      }
+
+      // Format status text
+      const formattedStatus = newIntermediateStop
+        ? `Interim Vault Staging — ${newIntermediateStop.facility} (${newIntermediateStop.code})`
+        : (isCustomStage ? stageName : (standardStage?.statusText || stageName))
+
+      // Checkpoints
+      let updatedCheckpoints = [...activeShipment.checkpoints]
+      if (recordLedgerMilestone) {
+        const milestoneFacility = newIntermediateStop
+          ? newIntermediateStop.facility
+          : (statusType === 'delivered' ? activeShipment.destination.facility : activeShipment.origin.facility)
+        const milestoneCity = newIntermediateStop
+          ? `${newIntermediateStop.city}, ${newIntermediateStop.country || ''}`
+          : (statusType === 'delivered' ? activeShipment.destination.city : activeShipment.origin.city)
+
+        const newCp: Checkpoint = {
+          id: `cp-stage-${Date.now()}`,
+          timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          title: `Mission Lifecycle: ${stageName}`,
+          location: milestoneCity,
+          facility: milestoneFacility,
+          status: 'current',
+          officer: activeShipment.custodyOfficer,
+          officerId: 'AV-OPS-COMMAND',
+          sealId: activeShipment.telemetry.electronicSeal.id,
+          hash: `SHA256:${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+          notes: newIntermediateStop
+            ? `Consignment staged at ${newIntermediateStop.facility} (${newIntermediateStop.code}) at ${Math.round(newProgress)}% progress. Radar transponder locked in subterranean vault holding mode.`
+            : `Mission stage transitioned to ${stageName}. Velocity and avionics updated to ${statusType} mode at ${Math.round(newProgress)}% progress.`,
+        }
+        updatedCheckpoints.push(newCp)
+      }
+
+      // If staging is applied, pause flight simulation so aircraft docks at waypoint
+      const isPaused = isInterimStaging ? true : activeShipment.isPaused
+
+      await updateShipmentDetails(activeShipment.id, {
+        status: formattedStatus,
+        statusType,
+        progress: newProgress,
+        isPaused,
+        intermediateStop: newIntermediateStop,
+        checkpoints: updatedCheckpoints,
+      })
+
+      setStageFeedbackMsg(`Mission stage updated: ${stageName} (${Math.round(newProgress)}% progress)`)
+      setTimeout(() => setStageFeedbackMsg(null), 5000)
+    } catch (e) {
+      console.error('Failed to apply mission stage:', e)
+      setStageFeedbackMsg('Failed to update mission stage. Check network connection.')
+    } finally {
+      setIsApplyingStage(false)
+    }
+  }
+
+  // Clear Staging and Resume Flight Corridor
+  const handleResumeFromStaging = async () => {
+    if (!activeShipment) return
+    setIsApplyingStage(true)
+    setStageFeedbackMsg(null)
+
+    try {
+      const stopFacility = activeShipment.intermediateStop?.facility || 'Interim Depository'
+      const updatedCheckpoints = [...activeShipment.checkpoints]
+
+      if (recordLedgerMilestone) {
+        updatedCheckpoints.push({
+          id: `cp-resume-${Date.now()}`,
+          timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          title: 'Resumed Direct Flight Corridor Transit',
+          location: `${activeShipment.intermediateStop?.city || 'Interim Vault'} ➔ ${activeShipment.destination.city}`,
+          facility: `Departed ${stopFacility}`,
+          status: 'current',
+          officer: activeShipment.custodyOfficer,
+          officerId: 'AV-OPS-COMMAND',
+          sealId: activeShipment.telemetry.electronicSeal.id,
+          hash: `SHA256:${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+          notes: `Staging cleared at ${stopFacility}. Airborne transponder downlink re-engaged. Cruising toward destination ${activeShipment.destination.city}.`,
+        })
+      }
+
+      await updateShipmentDetails(activeShipment.id, {
+        status: 'In Transit — Sovereign Air-Specie Corridor',
+        statusType: 'in-flight',
+        isPaused: false,
+        intermediateStop: null,
+        checkpoints: updatedCheckpoints,
+      })
+
+      setStageFeedbackMsg('Intermediate staging cleared. Direct corridor flight resumed!')
+      setTimeout(() => setStageFeedbackMsg(null), 5000)
+    } catch (e) {
+      console.error('Failed to resume flight:', e)
+      setStageFeedbackMsg('Failed to resume flight corridor.')
+    } finally {
+      setIsApplyingStage(false)
+    }
+  }
+
   // Security Gate if not authenticated as Admin
   if (user?.role !== 'admin') {
     return (
@@ -1167,69 +1356,299 @@ export function AdminCommandCenter() {
                 <div className="grid gap-6 lg:grid-cols-12 pt-2">
                   {/* Left: Mission Lifecycle & Flight Progress (7 cols) */}
                   <div className="space-y-6 lg:col-span-7">
-                    {/* Lifecycle Stages */}
-                    <div className="rounded-2xl border border-[#242833] bg-[#0e1117] p-5 sm:p-6 shadow-inner">
-                      <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-[#dfba6c] mb-4 flex items-center gap-2">
-                        <Activity size={15} />
-                        <span>Advance Mission Lifecycle Stage</span>
-                      </h4>
-                      <div className="grid gap-2.5 sm:grid-cols-2">
-                        <button
-                          onClick={() => {
-                            updateShipmentStatus(activeShipment.id, 'Vault Staging & Assay Verified', 'staging')
-                            updateShipmentProgress(activeShipment.id, 15)
-                          }}
-                          className="rounded-xl border border-[#242833] bg-[#161a24] p-3.5 text-left hover:border-[#dfba6c]/60 hover:bg-[#1e2330] transition text-xs group"
-                        >
-                          <span className="font-semibold text-white block group-hover:text-[#dfba6c] transition">1. Vault Release</span>
-                          <span className="text-[10px] text-gray-400 font-mono">Staged in bonded vault (15%)</span>
-                        </button>
+                    {/* Dynamic Mission Lifecycle & Staging Controller */}
+                    <div className="rounded-2xl border border-[#242833] bg-[#0e1117] p-5 sm:p-6 shadow-inner space-y-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#242833] pb-3">
+                        <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-[#dfba6c] flex items-center gap-2">
+                          <Activity size={15} />
+                          <span>Advance Mission Lifecycle & Dynamic Staging</span>
+                        </h4>
+                        <span className="text-[10px] font-mono text-gray-400">
+                          Current Progress: <strong className="text-white">{activeShipment.progress}%</strong>
+                        </span>
+                      </div>
 
-                        <button
-                          onClick={() => {
-                            updateShipmentStatus(activeShipment.id, 'In Transit — Armored Ground Convoy', 'in-flight')
-                            updateShipmentProgress(activeShipment.id, 35)
-                          }}
-                          className="rounded-xl border border-[#242833] bg-[#161a24] p-3.5 text-left hover:border-[#dfba6c]/60 hover:bg-[#1e2330] transition text-xs group"
-                        >
-                          <span className="font-semibold text-white block group-hover:text-[#dfba6c] transition">2. Armored Convoy</span>
-                          <span className="text-[10px] text-gray-400 font-mono">Level IV airside escort (35%)</span>
-                        </button>
+                      {/* Active Staging Alert Banner (if interim stop is active) */}
+                      {activeShipment.intermediateStop && activeShipment.intermediateStop.status === 'active_stage' && (
+                        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-3.5 text-xs text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                          <div className="flex items-start gap-2.5">
+                            <span className="size-2.5 rounded-full bg-blue-400 mt-1 animate-ping shrink-0" />
+                            <div>
+                              <div className="font-bold text-blue-300 font-mono flex items-center gap-2">
+                                <span>INTERIM STAGING ACTIVE: {activeShipment.intermediateStop.facility}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-blue-500/30 text-[10px]">{activeShipment.intermediateStop.code}</span>
+                              </div>
+                              <p className="text-[11px] text-blue-200/75 mt-0.5">
+                                Staged at {activeShipment.intermediateStop.stagedAtProgress}% progress • Course bending active • Client portal displays: <em className="text-white">"Secured Holding in Transit"</em>
+                              </p>
+                            </div>
+                          </div>
 
-                        <button
-                          onClick={() => {
-                            updateShipmentStatus(activeShipment.id, 'In Transit — Secure Air Corridor', 'in-flight')
-                            updateShipmentProgress(activeShipment.id, 68)
-                          }}
-                          className="rounded-xl border border-[#242833] bg-[#161a24] p-3.5 text-left hover:border-[#dfba6c]/60 hover:bg-[#1e2330] transition text-xs group"
-                        >
-                          <span className="font-semibold text-white block group-hover:text-[#dfba6c] transition">3. Airborne Specie Hold</span>
-                          <span className="text-[10px] text-gray-400 font-mono">En-route cruising FL380 (68%)</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={handleResumeFromStaging}
+                            disabled={isApplyingStage}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 font-mono text-xs font-bold transition shadow shrink-0 self-start sm:self-auto cursor-pointer"
+                          >
+                            <Play size={12} className="fill-black" />
+                            <span>Resume Direct Transit</span>
+                          </button>
+                        </div>
+                      )}
 
-                        <button
-                          onClick={() => {
-                            updateShipmentStatus(activeShipment.id, 'Bonded Customs Clearance in Progress', 'customs')
-                            updateShipmentProgress(activeShipment.id, 88)
-                          }}
-                          className="rounded-xl border border-[#242833] bg-[#161a24] p-3.5 text-left hover:border-[#dfba6c]/60 hover:bg-[#1e2330] transition text-xs group"
-                        >
-                          <span className="font-semibold text-white block group-hover:text-[#dfba6c] transition">4. Customs Hold</span>
-                          <span className="text-[10px] text-gray-400 font-mono">Carnet ATA inspection (88%)</span>
-                        </button>
+                      {/* Stage Selector Form */}
+                      <div className="space-y-3.5 text-xs">
+                        <div>
+                          <label className="font-mono font-bold text-gray-300 block mb-1">
+                            Operational Lifecycle Stage
+                          </label>
+                          <select
+                            value={isCustomStage ? 'custom' : selectedStageId}
+                            onChange={e => {
+                              const val = e.target.value
+                              if (val === 'custom') {
+                                setIsCustomStage(true)
+                              } else {
+                                setIsCustomStage(false)
+                                setSelectedStageId(val)
+                                const found = STANDARD_LOGISTICS_STAGES.find(s => s.id === val)
+                                if (found?.defaultProgress !== undefined && progressMode === 'override') {
+                                  setOverrideProgress(found.defaultProgress)
+                                }
+                              }
+                            }}
+                            className="h-10 w-full rounded-xl border border-[#242833] bg-[#161a24] px-3.5 text-xs text-white outline-none focus:border-[#dfba6c] transition font-sans cursor-pointer"
+                          >
+                            <optgroup label="Standard Global Logistics Stages">
+                              {STANDARD_LOGISTICS_STAGES.map(s => (
+                                <option key={s.id} value={s.id}>
+                                  {s.shortLabel} — {s.name} {s.defaultProgress ? `(${s.defaultProgress}%)` : '(Interim)'}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Custom Mission Workflow">
+                              <option value="custom">➕ [+ Create Custom Operational Stage...]</option>
+                            </optgroup>
+                          </select>
+                        </div>
 
+                        {/* Custom Stage Builder Panel */}
+                        {isCustomStage && (
+                          <div className="rounded-xl border border-[#dfba6c]/30 bg-[#161a24] p-3.5 space-y-3">
+                            <div>
+                              <label className="font-mono font-bold text-[#dfba6c] block mb-1">
+                                Custom Stage Title
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Alpine Bunker Holding & Armored Tarmac Transit"
+                                value={customStageName}
+                                onChange={e => setCustomStageName(e.target.value)}
+                                className="h-9 w-full rounded-lg border border-[#242833] bg-[#0e1117] px-3 text-xs text-white placeholder:text-gray-500 outline-none focus:border-[#dfba6c] transition"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="font-mono font-bold text-gray-300 block mb-1">
+                                Operational Stage Persona & Vehicle Behavior
+                              </label>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {([
+                                  { type: 'staging', label: 'Vault Staging', icon: <Building2 size={13} /> },
+                                  { type: 'in-flight', label: 'Air Corridor', icon: <Plane size={13} /> },
+                                  { type: 'in-flight', label: 'Armored Convoy', icon: <Truck size={13} /> },
+                                  { type: 'customs', label: 'Customs Hold', icon: <ShieldCheck size={13} /> },
+                                ] as const).map(item => (
+                                  <button
+                                    key={item.label}
+                                    type="button"
+                                    onClick={() => setCustomStatusType(item.type as Shipment['statusType'])}
+                                    className={`p-2 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition ${
+                                      customStatusType === item.type
+                                        ? 'border-[#dfba6c] bg-[#dfba6c]/15 text-[#dfba6c] font-bold'
+                                        : 'border-[#242833] bg-[#0e1117] text-gray-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {item.icon}
+                                    <span>{item.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Location & Waypoint Depository Assignment (For Staging & Interim Holds) */}
+                        {(isCustomStage || selectedStageId.includes('staging') || selectedStageId.includes('audit')) && (
+                          <div className="rounded-xl border border-blue-500/30 bg-[#0d1424] p-3.5 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="font-mono font-bold text-blue-300 flex items-center gap-1.5">
+                                <MapPin size={13} className="text-blue-400" />
+                                <span>Intermediate Waypoint / Depository Hub (Course Deflection)</span>
+                              </label>
+                              <span className="text-[10px] text-blue-300/70 font-mono">Curves flight radar</span>
+                            </div>
+
+                            <select
+                              value={isCustomLocation ? 'custom_loc' : selectedHubCode}
+                              onChange={e => {
+                                const val = e.target.value
+                                if (val === 'custom_loc') {
+                                  setIsCustomLocation(true)
+                                } else {
+                                  setIsCustomLocation(false)
+                                  setSelectedHubCode(val)
+                                }
+                              }}
+                              className="h-9 w-full rounded-lg border border-[#242833] bg-[#161a24] px-3 text-xs text-white outline-none focus:border-blue-400 transition cursor-pointer font-sans"
+                            >
+                              <optgroup label="Registered AurumVault Depository Vaults">
+                                {STANDARD_DEPOSITORY_HUBS.map(hub => (
+                                  <option key={hub.code} value={hub.code}>
+                                    {hub.name} ({hub.code} • {hub.city}, {hub.country})
+                                  </option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Custom Facility">
+                                <option value="custom_loc">➕ [+ Custom Depository Facility / City...]</option>
+                              </optgroup>
+                            </select>
+
+                            {isCustomLocation && (
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                <div>
+                                  <label className="text-[10px] font-mono text-gray-400 block mb-0.5">Facility Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Frankfurt Airside Specie Vault"
+                                    value={customFacilityName}
+                                    onChange={e => setCustomFacilityName(e.target.value)}
+                                    className="h-8 w-full rounded border border-[#242833] bg-[#161a24] px-2.5 text-xs text-white placeholder:text-gray-500 outline-none focus:border-blue-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-mono text-gray-400 block mb-0.5">City / Location</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Frankfurt, Germany"
+                                    value={customCity}
+                                    onChange={e => setCustomCity(e.target.value)}
+                                    className="h-8 w-full rounded border border-[#242833] bg-[#161a24] px-2.5 text-xs text-white placeholder:text-gray-500 outline-none focus:border-blue-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-mono text-gray-400 block mb-0.5">Facility Code</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. FRA-SEC"
+                                    value={customCode}
+                                    onChange={e => setCustomCode(e.target.value)}
+                                    className="h-8 w-full rounded border border-[#242833] bg-[#161a24] px-2.5 text-xs text-white placeholder:text-gray-500 outline-none focus:border-blue-400"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Progress Movement Behavior Control */}
+                        <div className="rounded-xl border border-[#242833] bg-[#161a24] p-3.5 space-y-2.5">
+                          <label className="font-mono font-bold text-gray-300 block text-[11px]">
+                            Transit Movement Progress Behavior
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setProgressMode('maintain')}
+                              className={`p-2.5 rounded-lg border text-left transition cursor-pointer ${
+                                progressMode === 'maintain'
+                                  ? 'border-[#dfba6c] bg-[#dfba6c]/10 text-white'
+                                  : 'border-[#242833] bg-[#0e1117] text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <span className="font-bold block text-xs flex items-center gap-1.5">
+                                <span className={`size-2 rounded-full ${progressMode === 'maintain' ? 'bg-[#dfba6c]' : 'bg-gray-500'}`} />
+                                Maintain Progress ({activeShipment.progress}%)
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-mono mt-0.5 block">
+                                Freezes at current flight position; no jump
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setProgressMode('override')}
+                              className={`p-2.5 rounded-lg border text-left transition cursor-pointer ${
+                                progressMode === 'override'
+                                  ? 'border-[#dfba6c] bg-[#dfba6c]/10 text-white'
+                                  : 'border-[#242833] bg-[#0e1117] text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <span className="font-bold block text-xs flex items-center gap-1.5">
+                                <span className={`size-2 rounded-full ${progressMode === 'override' ? 'bg-[#dfba6c]' : 'bg-gray-500'}`} />
+                                Recalibrate Progress ({overrideProgress}%)
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-mono mt-0.5 block">
+                                Set custom milestone percentage
+                              </span>
+                            </button>
+                          </div>
+
+                          {progressMode === 'override' && (
+                            <div className="pt-2">
+                              <div className="flex justify-between text-[11px] font-mono text-gray-400 mb-1">
+                                <span>Adjust Milestone %:</span>
+                                <span className="font-bold text-[#dfba6c]">{overrideProgress}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                value={overrideProgress}
+                                onChange={e => setOverrideProgress(Number(e.target.value))}
+                                className="w-full accent-[#dfba6c] h-1.5 bg-[#242833] rounded-lg cursor-pointer"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Checkbox: Append Verified Ledger Milestone */}
+                        <label className="flex items-center gap-2 cursor-pointer pt-1 text-[11px] text-gray-300 font-mono">
+                          <input
+                            type="checkbox"
+                            checked={recordLedgerMilestone}
+                            onChange={e => setRecordLedgerMilestone(e.target.checked)}
+                            className="accent-[#dfba6c] size-3.5 rounded"
+                          />
+                          <span>Append cryptographic SHA-256 milestone to blockchain audit ledger</span>
+                        </label>
+
+                        {/* Feedback Banner */}
+                        {stageFeedbackMsg && (
+                          <div className="p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-xs font-mono flex items-center gap-2 animate-fadeIn">
+                            <CheckCircle2 size={14} />
+                            <span>{stageFeedbackMsg}</span>
+                          </div>
+                        )}
+
+                        {/* Apply Button */}
                         <button
-                          onClick={() => {
-                            updateShipmentStatus(activeShipment.id, 'Delivered — Verified Handover Complete', 'delivered')
-                            updateShipmentProgress(activeShipment.id, 100)
-                          }}
-                          className="sm:col-span-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3.5 text-left hover:bg-emerald-500/20 transition text-xs"
+                          type="button"
+                          onClick={handleApplyMissionStage}
+                          disabled={isApplyingStage}
+                          className="w-full h-11 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black font-bold font-mono text-xs flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-[0.99] transition disabled:opacity-50 cursor-pointer"
                         >
-                          <span className="font-bold text-emerald-400 block flex items-center gap-2">
-                            <CheckCircle2 size={15} />
-                            5. Final Vault Lodgement (100%)
-                          </span>
-                          <span className="text-[10px] text-emerald-300 font-mono">Physical handover complete & custody certificate closed</span>
+                          {isApplyingStage ? (
+                            <>
+                              <RefreshCw size={14} className="animate-spin" />
+                              <span>Recalibrating Mission Vector & Avionics...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check size={14} />
+                              <span>Apply Lifecycle Stage & Set Course</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>

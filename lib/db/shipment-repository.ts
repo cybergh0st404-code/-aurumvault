@@ -1,5 +1,5 @@
 import { getDb, ensureDbInitialized } from './database'
-import { Shipment, Checkpoint, SensorTelemetry, AssetManifest } from '../types'
+import { Shipment, Checkpoint, SensorTelemetry, AssetManifest, IntermediateStop } from '../types'
 import { shipmentsData as defaultStaticShipments } from '../shipments-data'
 import { formatDeclaredValue } from '../weight-utils'
 
@@ -91,10 +91,17 @@ export async function ensureShipmentsTable(): Promise<void> {
       manifest_json TEXT NOT NULL,
       checkpoints_json TEXT NOT NULL,
       telemetry_json TEXT NOT NULL,
+      intermediate_stop_json TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `)
+
+  try {
+    await db.execute('ALTER TABLE shipments ADD COLUMN intermediate_stop_json TEXT;')
+  } catch {
+    // Column already exists
+  }
 
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_shipments_client_code ON shipments(client_code);`)
 
@@ -123,6 +130,9 @@ function rowToShipment(row: any): Shipment {
   const manifest = parseJsonSafe<AssetManifest>(row.manifest_json, {} as AssetManifest)
   const checkpoints = parseJsonSafe<Checkpoint[]>(row.checkpoints_json, [])
   const telemetry = parseJsonSafe<SensorTelemetry>(row.telemetry_json, {} as SensorTelemetry)
+  const intermediateStop = row.intermediate_stop_json
+    ? parseJsonSafe<IntermediateStop | null>(row.intermediate_stop_json, null)
+    : undefined
 
   return {
     id: String(row.id),
@@ -171,6 +181,7 @@ function rowToShipment(row: any): Shipment {
     checkpoints,
     telemetry,
     manifest,
+    intermediateStop: intermediateStop || undefined,
   }
 }
 
@@ -197,7 +208,7 @@ async function insertShipmentIntoDb(s: Shipment): Promise<void> {
         destination_city, destination_country, destination_facility, destination_code, destination_lat, destination_lng,
         current_location_name, current_location_status_text, eta, dispatched_at, progress, is_paused, speed_multiplier,
         transport_mode, carrier_flight_number, custody_officer, shipping_weight,
-        manifest_json, checkpoints_json, telemetry_json, updated_at
+        manifest_json, checkpoints_json, telemetry_json, intermediate_stop_json, updated_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
@@ -206,7 +217,7 @@ async function insertShipmentIntoDb(s: Shipment): Promise<void> {
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, CURRENT_TIMESTAMP
+        ?, ?, ?, ?, CURRENT_TIMESTAMP
       )
     `,
     args: [
@@ -248,6 +259,7 @@ async function insertShipmentIntoDb(s: Shipment): Promise<void> {
       JSON.stringify(s.manifest),
       JSON.stringify(s.checkpoints),
       JSON.stringify(s.telemetry),
+      s.intermediateStop ? JSON.stringify(s.intermediateStop) : null,
     ],
   })
 }
@@ -542,6 +554,8 @@ export async function updateShipmentDetails(
     custodyOfficer?: string
     declaredValue?: string
     cargoDescription?: string
+    checkpoints?: Checkpoint[]
+    intermediateStop?: IntermediateStop | null
   }
 ): Promise<Shipment | null> {
   await ensureDbInitialized()
@@ -597,8 +611,10 @@ export async function updateShipmentDetails(
     declaredValue: updates.declaredValue ? formatDeclaredValue(updates.declaredValue) : existing.manifest.declaredValue,
   }
 
-  // Update checkpoints to reflect new names & locations
-  const checkpoints: Checkpoint[] = existing.checkpoints.map((cp, idx) => {
+  // Update checkpoints to reflect new names & locations, or use explicit checkpoints if provided
+  const checkpoints: Checkpoint[] = updates.checkpoints && updates.checkpoints.length > 0
+    ? updates.checkpoints
+    : existing.checkpoints.map((cp, idx) => {
     if (idx === 0) {
       return {
         ...cp,
@@ -617,6 +633,10 @@ export async function updateShipmentDetails(
     }
     return cp
   })
+
+  const intermediateStop = updates.intermediateStop !== undefined
+    ? updates.intermediateStop
+    : (existing.intermediateStop || null)
 
   const telemetry: SensorTelemetry = {
     ...existing.telemetry,
@@ -666,6 +686,7 @@ export async function updateShipmentDetails(
     manifest,
     checkpoints,
     telemetry,
+    intermediateStop: intermediateStop || null,
   }
 
   await insertShipmentIntoDb(updatedShipment)

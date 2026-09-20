@@ -158,6 +158,8 @@ export async function PATCH(request: Request) {
       custodyOfficer: body.custodyOfficer,
       declaredValue: body.declaredValue,
       cargoDescription: body.cargoDescription,
+      checkpoints: body.checkpoints,
+      intermediateStop: body.intermediateStop,
     })
 
     if (!updated) {

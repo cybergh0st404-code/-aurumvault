@@ -779,11 +779,13 @@ export function ClientDashboard() {
                             ? 'text-emerald-400'
                             : activeConsignment.status?.toLowerCase().includes('customs')
                             ? 'text-amber-300'
-                            : activeConsignment.status?.toLowerCase().includes('staging')
+                            : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
                             ? 'text-blue-300'
                             : 'text-[#dfba6c]'
                         }`}>
-                          {activeConsignment.status || 'In Transit — Chartered Air-Specie Corridor'}
+                          {activeConsignment.intermediateStop?.status === 'active_stage'
+                            ? 'Secured Holding in Transit'
+                            : (activeConsignment.status || 'In Transit — Chartered Air-Specie Corridor')}
                         </span>
                         <span className="font-mono text-xs text-gray-400">
                           {activeConsignment.trackingNumber}
@@ -1014,11 +1016,13 @@ export function ClientDashboard() {
                           ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                           : activeConsignment.status?.toLowerCase().includes('customs')
                           ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                          : activeConsignment.status?.toLowerCase().includes('staging')
+                          : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
                           ? 'bg-blue-500/15 border-blue-500/30 text-blue-300'
                           : 'bg-[#dfba6c]/15 border-[#dfba6c]/30 text-[#dfba6c]'
                       }`}>
-                        {activeConsignment.status}
+                        {activeConsignment.intermediateStop?.status === 'active_stage'
+                          ? 'Secured Holding in Transit'
+                          : activeConsignment.status}
                       </span>
                     </div>
                     <p className="text-xs text-gray-400 mt-1 font-mono">

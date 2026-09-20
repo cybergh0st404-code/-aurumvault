@@ -160,7 +160,9 @@ export function TrackingDashboard() {
               </div>
 
               <span className="rounded-lg bg-muted px-2.5 py-1 text-xs font-mono text-muted-foreground self-start sm:self-auto">
-                Status: {activeShipment.status}
+                Status: {activeShipment.intermediateStop?.status === 'active_stage'
+                  ? 'Secured Holding in Transit'
+                  : activeShipment.status}
               </span>
             </div>
 

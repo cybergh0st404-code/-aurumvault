@@ -58,11 +58,22 @@ export function TrackingMap({
   const isConvoy = statusLower.includes('convoy') || statusLower.includes('ground') || statusLower.includes('armored')
   const isAirborne = !isDelivered && !isCustoms && !isStaged && !isConvoy
 
+  // Check for active intermediate staging waypoint
+  const hasIntermediateStop = Boolean(
+    shipment.intermediateStop &&
+    shipment.intermediateStop.status === 'active_stage'
+  )
+
   // Calculate target progress from operational stage
   const getTargetProgress = (): number => {
     if (isDelivered) return 1.0
     if (isCustoms) return Math.max(0.85, (shipment.progress ?? 85) / 100)
-    if (isStaged) return Math.min(0.15, (shipment.progress ?? 15) / 100)
+    if (isStaged) {
+      if (hasIntermediateStop || (shipment.progress && shipment.progress > 20)) {
+        return Math.max(0.05, Math.min(0.95, (shipment.progress ?? 50) / 100))
+      }
+      return Math.min(0.15, (shipment.progress ?? 15) / 100)
+    }
     if (isConvoy) return Math.max(0.20, Math.min(0.50, (shipment.progress ?? 35) / 100))
     return Math.max(0.05, Math.min(0.95, (shipment.progress ?? 60) / 100))
   }
@@ -74,7 +85,7 @@ export function TrackingMap({
   // Synchronize progress immediately when external shipment updates or stage changes
   useEffect(() => {
     setProgress(getTargetProgress())
-  }, [shipment.progress, shipment.id, shipment.status, isDelivered, isCustoms, isStaged, isConvoy])
+  }, [shipment.progress, shipment.id, shipment.status, isDelivered, isCustoms, isStaged, isConvoy, hasIntermediateStop])
 
   useEffect(() => {
     if (shipment.isPaused !== undefined) {
@@ -138,25 +149,78 @@ export function TrackingMap({
     return () => clearInterval(interval)
   }, [])
 
-  // Quadratic Bezier Curve Geometry: P0=(50, 45), P1=(300, -15), P2=(550, 45)
+  // Quadratic Bezier Curve Geometry:
+  // Normal: P0=(50, 45), P1=(300, -15), P2=(550, 45)
+  // Bent Corridor (with intermediate staging waypoint):
+  // Leg 1: P0=(50, 45) -> P_ctrl1=(165, 15) -> P_waypoint=(300, 60)
+  // Leg 2: P_waypoint=(300, 60) -> P_ctrl2=(435, 15) -> P2=(550, 45)
   const p0 = { x: 50, y: 45 }
   const p1 = { x: 300, y: -15 }
   const p2 = { x: 550, y: 45 }
+  const pWaypoint = { x: 300, y: 60 }
+  const pCtrl1 = { x: 165, y: 15 }
+  const pCtrl2 = { x: 435, y: 15 }
 
   const t = Math.max(0.01, Math.min(0.99, progress))
 
-  // Position on Bezier curve
-  const currentX = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x
-  const currentY = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y
+  let currentX: number
+  let currentY: number
+  let tangentAngle: number
 
-  // Tangent angle
-  const dx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x)
-  const dy = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y)
-  const tangentAngle = (Math.atan2(dy, dx) * 180) / Math.PI
+  if (hasIntermediateStop) {
+    if (isStaged) {
+      // Anchored directly at intermediate staging vault
+      currentX = pWaypoint.x
+      currentY = pWaypoint.y
+      tangentAngle = 0
+    } else if (t <= 0.5) {
+      // Traveling along Leg 1 (Origin to Intermediate Staging Hub)
+      const u = t / 0.5
+      currentX = (1 - u) * (1 - u) * p0.x + 2 * (1 - u) * u * pCtrl1.x + u * u * pWaypoint.x
+      currentY = (1 - u) * (1 - u) * p0.y + 2 * (1 - u) * u * pCtrl1.y + u * u * pWaypoint.y
+      const dx = 2 * (1 - u) * (pCtrl1.x - p0.x) + 2 * u * (pWaypoint.x - pCtrl1.x)
+      const dy = 2 * (1 - u) * (pCtrl1.y - p0.y) + 2 * u * (pWaypoint.y - pCtrl1.y)
+      tangentAngle = (Math.atan2(dy, dx) * 180) / Math.PI
+    } else {
+      // Traveling along Leg 2 (Intermediate Staging Hub to Destination)
+      const u = (t - 0.5) / 0.5
+      currentX = (1 - u) * (1 - u) * pWaypoint.x + 2 * (1 - u) * u * pCtrl2.x + u * u * p2.x
+      currentY = (1 - u) * (1 - u) * pWaypoint.y + 2 * (1 - u) * u * pCtrl2.y + u * u * p2.y
+      const dx = 2 * (1 - u) * (pCtrl2.x - pWaypoint.x) + 2 * u * (p2.x - pCtrl2.x)
+      const dy = 2 * (1 - u) * (pCtrl2.y - pWaypoint.y) + 2 * u * (p2.y - pCtrl2.y)
+      tangentAngle = (Math.atan2(dy, dx) * 180) / Math.PI
+    }
+  } else {
+    // Normal single-arc quadratic Bezier curve
+    currentX = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x
+    currentY = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y
+    const dx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x)
+    const dy = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y)
+    tangentAngle = (Math.atan2(dy, dx) * 180) / Math.PI
+  }
 
   // Dynamic Geographic Coordinates interpolation
-  const currentLat = shipment.origin.coords[0] + t * (shipment.destination.coords[0] - shipment.origin.coords[0])
-  const currentLng = shipment.origin.coords[1] + t * (shipment.destination.coords[1] - shipment.origin.coords[1])
+  const stopCoords = shipment.intermediateStop?.coords
+  let currentLat: number
+  let currentLng: number
+
+  if (hasIntermediateStop && stopCoords) {
+    if (isStaged) {
+      currentLat = stopCoords[0]
+      currentLng = stopCoords[1]
+    } else if (t <= 0.5) {
+      const u = t / 0.5
+      currentLat = shipment.origin.coords[0] + u * (stopCoords[0] - shipment.origin.coords[0])
+      currentLng = shipment.origin.coords[1] + u * (stopCoords[1] - shipment.origin.coords[1])
+    } else {
+      const u = (t - 0.5) / 0.5
+      currentLat = stopCoords[0] + u * (shipment.destination.coords[0] - stopCoords[0])
+      currentLng = stopCoords[1] + u * (shipment.destination.coords[1] - stopCoords[1])
+    }
+  } else {
+    currentLat = shipment.origin.coords[0] + t * (shipment.destination.coords[0] - shipment.origin.coords[0])
+    currentLng = shipment.origin.coords[1] + t * (shipment.destination.coords[1] - shipment.origin.coords[1])
+  }
 
   // Dynamic Stage Persona, Readouts & Telemetry Branding
   let stageConfig = {
@@ -220,19 +284,56 @@ export function TrackingMap({
       surveillanceText: 'Convoy Active: Level-B6 Inter-State Ground Transit • GPS Locked',
     }
   } else if (isStaged) {
-    stageConfig = {
-      modeTitle: 'DEPOSITORY VAULT STAGING & ASSAY CALIBRATION',
-      modeSubtitle: 'Subterranean staging vault release and dual-officer bar assay verification',
-      statusBadge: 'VAULT STAGING & ASSAY VERIFIED',
-      badgeColor: 'text-blue-300 bg-blue-500/15 border-blue-500/30',
-      altitude: 'Subterranean Vault (Tier-IV Depository)',
-      speed: 'Stationary (Origin Assay Staging)',
-      iconType: 'staging',
-      nodeColor: 'from-blue-400 to-indigo-600',
-      shadowGlow: '#3b82f6',
-      calloutTitle: `Depository Staging • ${Math.round(progress * 100)}% Verified`,
-      calloutSubtitle: 'Origin Vault Facility • Assay Calibration & Custody Seal Affixed',
-      surveillanceText: 'Depository Hold: Origin Vault Release & Dual-Officer Assay Verified',
+    if (hasIntermediateStop) {
+      const stopInfo = shipment.intermediateStop
+      if (showAdminControls) {
+        // Admin detailed tactical staging HUD
+        stageConfig = {
+          modeTitle: `INTERIM DEPOSITORY STAGING — ${(stopInfo?.facility || stopInfo?.city || 'VAULT').toUpperCase()}`,
+          modeSubtitle: `Command ordered mid-mission staging at ${stopInfo?.facility || stopInfo?.city} (${stopInfo?.code || 'VAULT'}).`,
+          statusBadge: `STAGED AT ${stopInfo?.code || 'INTERIM VAULT'}`,
+          badgeColor: 'text-blue-300 bg-blue-500/15 border-blue-500/30',
+          altitude: 'Subterranean Vault (Tier-IV Depository)',
+          speed: '0 kts (Command Staging Hold)',
+          iconType: 'staging',
+          nodeColor: 'from-blue-400 to-indigo-600',
+          shadowGlow: '#3b82f6',
+          calloutTitle: `${stopInfo?.code || 'VAULT'} Staging • ${Math.round(progress * 100)}% Held`,
+          calloutSubtitle: `${stopInfo?.facility || 'Depository Vault'} • Staged En Route`,
+          surveillanceText: `Interim Staging Hold Active: ${stopInfo?.facility || 'Vault'} (${stopInfo?.code || 'VAULT'})`,
+        }
+      } else {
+        // Client discreet VIP protocol status
+        stageConfig = {
+          modeTitle: 'LEVEL-IV BONDED DEPOSITORY HOLD',
+          modeSubtitle: 'Consignment secured in certified bonded depository custody pending clearance.',
+          statusBadge: 'SECURED HOLDING IN TRANSIT',
+          badgeColor: 'text-blue-300 bg-blue-500/15 border-blue-500/30',
+          altitude: 'Subterranean Vault (Tier-IV Depository)',
+          speed: '0 kts (Stationary Depository Hold)',
+          iconType: 'staging',
+          nodeColor: 'from-blue-400 to-indigo-600',
+          shadowGlow: '#3b82f6',
+          calloutTitle: `Secured Holding • ${Math.round(progress * 100)}% Traversed`,
+          calloutSubtitle: 'Active Biometric Vault Hold • Transit Safeguard Active',
+          surveillanceText: 'Protocol Notice: Consignment staged under active Level-IV biometric custody en route.',
+        }
+      }
+    } else {
+      stageConfig = {
+        modeTitle: 'DEPOSITORY VAULT STAGING & ASSAY CALIBRATION',
+        modeSubtitle: 'Subterranean staging vault release and dual-officer bar assay verification',
+        statusBadge: 'VAULT STAGING & ASSAY VERIFIED',
+        badgeColor: 'text-blue-300 bg-blue-500/15 border-blue-500/30',
+        altitude: 'Subterranean Vault (Tier-IV Depository)',
+        speed: 'Stationary (Origin Assay Staging)',
+        iconType: 'staging',
+        nodeColor: 'from-blue-400 to-indigo-600',
+        shadowGlow: '#3b82f6',
+        calloutTitle: `Depository Staging • ${Math.round(progress * 100)}% Verified`,
+        calloutSubtitle: 'Origin Vault Facility • Assay Calibration & Custody Seal Affixed',
+        surveillanceText: 'Depository Hold: Origin Vault Release & Dual-Officer Assay Verified',
+      }
     }
   }
 
@@ -244,10 +345,30 @@ export function TrackingMap({
     stageConfig.surveillanceText = 'Corridor Standby: Radar Tracking Paused by Operations Command'
   }
 
+  // SVG Corridor Path definition
+  const corridorPath = hasIntermediateStop
+    ? `M ${p0.x} ${p0.y} Q ${pCtrl1.x} ${pCtrl1.y} ${pWaypoint.x} ${pWaypoint.y} Q ${pCtrl2.x} ${pCtrl2.y} ${p2.x} ${p2.y}`
+    : `M ${p0.x} ${p0.y} Q ${p1.x} ${p1.y} ${p2.x} ${p2.y}`
+
   // Trailing breadcrumbs along path
   const breadcrumbs = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]
     .filter(bt => bt < t)
     .map(bt => {
+      if (hasIntermediateStop) {
+        if (bt <= 0.5) {
+          const u = bt / 0.5
+          return {
+            x: (1 - u) * (1 - u) * p0.x + 2 * (1 - u) * u * pCtrl1.x + u * u * pWaypoint.x,
+            y: (1 - u) * (1 - u) * p0.y + 2 * (1 - u) * u * pCtrl1.y + u * u * pWaypoint.y,
+          }
+        } else {
+          const u = (bt - 0.5) / 0.5
+          return {
+            x: (1 - u) * (1 - u) * pWaypoint.x + 2 * (1 - u) * u * pCtrl2.x + u * u * p2.x,
+            y: (1 - u) * (1 - u) * pWaypoint.y + 2 * (1 - u) * u * pCtrl2.y + u * u * p2.y,
+          }
+        }
+      }
       const bx = (1 - bt) * (1 - bt) * p0.x + 2 * (1 - bt) * bt * p1.x + bt * bt * p2.x
       const by = (1 - bt) * (1 - bt) * p0.y + 2 * (1 - bt) * bt * p1.y + bt * bt * p2.y
       return { x: bx, y: by }
@@ -346,7 +467,7 @@ export function TrackingMap({
 
               {/* Planned Route Guide (Dotted) */}
               <path
-                d={`M ${p0.x} ${p0.y} Q ${p1.x} ${p1.y} ${p2.x} ${p2.y}`}
+                d={corridorPath}
                 fill="none"
                 stroke="rgba(255,255,255,0.12)"
                 strokeWidth="3"
@@ -355,7 +476,7 @@ export function TrackingMap({
 
               {/* Traveled Corridor Arc (Glowing with Stage Persona Color) */}
               <path
-                d={`M ${p0.x} ${p0.y} Q ${p1.x} ${p1.y} ${p2.x} ${p2.y}`}
+                d={corridorPath}
                 fill="none"
                 stroke="url(#corridorGradient)"
                 strokeWidth="3.5"
@@ -373,6 +494,15 @@ export function TrackingMap({
                 />
               ))}
 
+              {/* Intermediate Staging Waypoint Hub Marker */}
+              {hasIntermediateStop && (
+                <g className="cursor-pointer">
+                  <circle cx={pWaypoint.x} cy={pWaypoint.y} r="15" fill="#3b82f6" fillOpacity="0.16" className="animate-pulse" />
+                  <circle cx={pWaypoint.x} cy={pWaypoint.y} r="7.5" fill="#0c1017" stroke="#3b82f6" strokeWidth="2.5" />
+                  <circle cx={pWaypoint.x} cy={pWaypoint.y} r="3" fill="#60a5fa" />
+                </g>
+              )}
+
               {/* Radiating Transponder Wave Behind Carrier */}
               <circle
                 cx={currentX}
@@ -383,6 +513,23 @@ export function TrackingMap({
                 strokeOpacity="0.4"
               />
             </svg>
+
+            {/* Intermediate Depository Waypoint Node Overlay */}
+            {hasIntermediateStop && (
+              <div className="absolute top-[48px] left-1/2 -translate-x-1/2 translate-y-3 text-center z-20 pointer-events-none">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0a0e1a]/95 border border-blue-500/50 text-[10px] font-mono text-blue-300 shadow-xl backdrop-blur-md">
+                  <span className="size-1.5 rounded-full bg-blue-400 animate-ping" />
+                  <span className="font-bold tracking-wider">{shipment.intermediateStop?.code || 'INTERIM-VAULT'}</span>
+                  <span className="text-gray-500">•</span>
+                  <span className="truncate max-w-[140px] text-gray-300">{shipment.intermediateStop?.city || 'Staging Depository'}</span>
+                  {isStaged && (
+                    <span className="ml-1 text-[8px] font-bold text-blue-400 bg-blue-500/20 px-1.5 py-0.5 rounded border border-blue-500/40">
+                      ● STAGED
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Origin Vault Node */}
             <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 text-left z-20">
