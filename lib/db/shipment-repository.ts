@@ -356,63 +356,92 @@ export async function createDedicatedShipmentForClient(client: {
   eta?: string
   destination?: string
   declaredValue?: string
+  status?: string
+  statusType?: Shipment['statusType']
+  isPaused?: boolean
+  progress?: number
 }): Promise<Shipment> {
   await ensureDbInitialized()
   const randomSuffix = Math.floor(100000 + Math.random() * 900000)
   const id = `GOLD-2026-${randomSuffix}`
 
-  const shipperName = client.shipperName || client.name || 'Private Specie Shipper'
-  const originCity = client.origin || 'Indiana'
-  const originAddress = client.shipperAddress || 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.'
-  const shipperPhone = client.shipperPhone || '+1 (470) 305-9614'
+  // Check if this consignment is initially lodged in Vault Staging
+  const isInitiallyStaged = client.statusType === 'staging' ||
+    (client.status ? client.status.toLowerCase().includes('staging') : false) ||
+    (!client.receiverName && !client.destination)
 
-  const receiverName = client.receiverName || 'Chris Bucksath'
-  const receiverContact = client.receiverContact || '+1 (859) 907-3706'
-  const receiverAddress = client.receiverAddress || '321 Pimlico Ct Crittenden Ky 41030'
-  const destinationCity = client.destination || 'Kentucky'
+  const shipperName = client.shipperName !== undefined ? client.shipperName : client.name
+  const originCity = client.origin || (isInitiallyStaged ? 'Geneva Depository' : 'Indiana')
+  const originAddress = client.shipperAddress || ''
+  const shipperPhone = client.shipperPhone || ''
+
+  const receiverName = client.receiverName || ''
+  const receiverContact = client.receiverContact || ''
+  const receiverAddress = client.receiverAddress || ''
+  const destinationCity = client.destination || (isInitiallyStaged ? 'Pending Destination Assignment' : 'Kentucky')
 
   const shippingWeight = client.shippingWeight || '93.9 g'
-  const eta = client.eta || '17/09/26'
+  const eta = client.eta || (isInitiallyStaged ? 'Pending Transit Orders' : '17/09/26')
 
   const originCoords = resolveCoordinates(originCity)
   const destCoords = resolveCoordinates(destinationCity)
 
   const trackingNumber = `AV-US-${Math.floor(10000 + Math.random() * 90000)}`
 
-  const originFacility = `${originAddress} (Shipper: ${shipperName}, ${shipperPhone})`
-  const destFacility = `${receiverAddress} (Receiver: ${receiverName}, ${receiverContact})`
+  const originFacility = originAddress
+    ? (shipperName ? `${originAddress} (Shipper: ${shipperName}${shipperPhone ? `, ${shipperPhone}` : ''})` : originAddress)
+    : (isInitiallyStaged ? 'Subterranean Vault Staging Facility' : 'Origin Transit Hub')
+
+  const destFacility = receiverAddress
+    ? (receiverName ? `${receiverAddress} (Receiver: ${receiverName}${receiverContact ? `, ${receiverContact}` : ''})` : receiverAddress)
+    : (isInitiallyStaged ? 'Pending Transit Assignment' : 'Destination Airside Reception')
+
+  const declaredValFormatted = formatDeclaredValue(client.declaredValue)
 
   const newShipment: Shipment = {
     id,
     trackingNumber,
-    status: 'In Transit — Chartered Air-Specie Corridor',
-    statusType: 'in-flight',
+    status: client.status || (isInitiallyStaged ? 'Vault Staging & Depository Custody' : 'In Transit — Chartered Air-Specie Corridor'),
+    statusType: client.statusType || (isInitiallyStaged ? 'staging' : 'in-flight'),
     category: 'Precious Metals & Bullion',
     origin: {
       city: originCity,
-      country: 'United States',
+      country: isInitiallyStaged ? 'Switzerland' : 'United States',
       facility: originFacility,
-      code: originCity.slice(0, 3).toUpperCase() + '-AIR',
+      code: originCity.slice(0, 3).toUpperCase() + '-VAULT',
       coords: originCoords,
     },
     destination: {
       city: destinationCity,
-      country: 'United States',
+      country: isInitiallyStaged ? 'Global Depository Network' : 'United States',
       facility: destFacility,
       code: destinationCity.slice(0, 3).toUpperCase() + '-SEC',
       coords: destCoords,
     },
-    currentLocation: {
-      name: `${originCity} to ${destinationCity} Chartered Flight Corridor`,
-      coords: [(originCoords[0] + destCoords[0]) / 2, (originCoords[1] + destCoords[1]) / 2],
-      statusText: 'Cruising FL280 • Chartered Air-Specie Convoy Flight',
-    },
+    currentLocation: isInitiallyStaged
+      ? {
+          name: `${originCity} Subterranean Specie Vault`,
+          coords: originCoords,
+          statusText: 'Vault Staged • Secured in Deep Depository Custody',
+        }
+      : {
+          name: `${originCity} to ${destinationCity} Chartered Flight Corridor`,
+          coords: [(originCoords[0] + destCoords[0]) / 2, (originCoords[1] + destCoords[1]) / 2],
+          statusText: 'Cruising FL280 • Chartered Air-Specie Convoy Flight',
+        },
     eta: eta.includes('/') ? `${eta}, 14:00 EDT` : eta,
-    dispatchedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', 08:30 CDT',
-    progress: 55,
-    transportMode: `Chartered Air-Specie Flight (${trackingNumber})`,
-    carrierFlightNumber: `${trackingNumber} / SPECIE-AIR`,
-    custodyOfficer: 'Chief Flight Marshal D. Miller (ID: #US-AIR-410)',
+    dispatchedAt: isInitiallyStaged
+      ? 'Awaiting Transit Dispatch'
+      : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', 08:30 CDT',
+    progress: client.progress !== undefined ? client.progress : (isInitiallyStaged ? 0 : 55),
+    isPaused: client.isPaused !== undefined ? client.isPaused : isInitiallyStaged,
+    transportMode: isInitiallyStaged
+      ? `Depository Vault Custody (${trackingNumber})`
+      : `Chartered Air-Specie Flight (${trackingNumber})`,
+    carrierFlightNumber: isInitiallyStaged ? 'PENDING DISPATCH' : `${trackingNumber} / SPECIE-AIR`,
+    custodyOfficer: isInitiallyStaged
+      ? 'Chief Depository Officer H. Weber (ID: #SWISS-VAULT-01)'
+      : 'Chief Flight Marshal D. Miller (ID: #US-AIR-410)',
     clientCode: client.clientCode,
     shipperName,
     shipperAddress: originAddress,
@@ -421,68 +450,118 @@ export async function createDedicatedShipmentForClient(client: {
     receiverContact,
     receiverAddress,
     shippingWeight,
-    checkpoints: [
-      {
-        id: `cp-${Date.now()}-1`,
-        timestamp: '14 Sep 2026, 08:30 CDT',
-        title: 'Shipper Handover & Custody Seal Verification',
-        location: `${originCity} Corridor`,
-        facility: originAddress,
-        status: 'completed',
-        officer: 'Agent T. Vance (ID: #AV-CHI-992)',
-        officerId: 'AV-CHI-992',
-        sealId: `SEAL-${client.clientCode}-A`,
-        hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
-        notes: `Precious bullion item received from shipper ${shipperName} (${shipperPhone}). Calibrated weight confirmed at ${shippingWeight}. Dual tamper-evident container locked.`,
-      },
-      {
-        id: `cp-${Date.now()}-2`,
-        timestamp: '14 Sep 2026, 11:45 CDT',
-        title: 'Airside Loading & Aircraft Specie Clearance',
-        location: `${originCity} Regional Airside Apron`,
-        facility: 'VIP Air Cargo Apron Stand #4',
-        status: 'completed',
-        officer: 'Flight Security Lead K. Bennett',
-        officerId: 'AV-AIR-301',
-        sealId: `SEAL-${client.clientCode}-B`,
-        hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
-        notes: 'Tamper seal intact. IoT electronic tracking beacon confirmed online. Specie cask locked in pressurized aircraft hold.',
-      },
-      {
-        id: `cp-${Date.now()}-3`,
-        timestamp: '15 Sep 2026, 02:15 EDT',
-        title: 'Airborne In-Flight Corridor Transit (FL280)',
-        location: 'Midwest Regional Airspace',
-        facility: `Flight ${trackingNumber} (Cruising FL280)`,
-        status: 'current',
-        officer: 'Captain R. Vance & Marshal D. Miller',
-        officerId: 'US-AIR-410',
-        sealId: `AES-${client.clientCode}-ACTIVE`,
-        hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
-        notes: 'Aircraft cruising at FL280 with active radar downlink. All environmental sensors nominal. Direct approach vector into sector.',
-      },
-      {
-        id: `cp-${Date.now()}-4`,
-        timestamp: eta.includes('/') ? `${eta}, 14:00 EDT (Estimated Delivery)` : `${eta} (Estimated Delivery)`,
-        title: `${destinationCity} Airside Reception & Final Handover Acceptance`,
-        location: `${destinationCity} Airside ➔ Destination Doorstep`,
-        facility: receiverAddress,
-        status: 'pending',
-        officer: `Designated Receiver: ${receiverName} (${receiverContact})`,
-        officerId: 'PENDING-VERIFICATION',
-        notes: `Dual photographic identification & biometric PIN signature required from receiver ${receiverName} upon physical delivery handover.`,
-      },
-    ],
+    checkpoints: isInitiallyStaged
+      ? [
+          {
+            id: `cp-${Date.now()}-1`,
+            timestamp: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', 09:00 CET',
+            title: 'Consignment Lodged in Secure Depository Vault',
+            location: `${originCity} Vault Wing`,
+            facility: originFacility,
+            status: 'completed',
+            officer: 'Senior Depository Officer H. Weber',
+            officerId: 'SWISS-VAULT-01',
+            sealId: `SEAL-${client.clientCode}-VAULT`,
+            hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
+            notes: `Bullion parcel lodged into subterranean vault. Calibrated gross weight verified at ${shippingWeight}. Tamper-evident vault custody lock engaged.`,
+          },
+          {
+            id: `cp-${Date.now()}-2`,
+            timestamp: 'Pending Authorization',
+            title: 'Subterranean Staging & Dual-Officer Bar Assay Verification',
+            location: `${originCity} Depository Staging Sector`,
+            facility: 'Pre-Transit Security Staging Vault',
+            status: 'current',
+            officer: 'Assay Officer & Security Escort Detail',
+            officerId: 'AV-STAGING-02',
+            sealId: `AES-${client.clientCode}-STAGED`,
+            notes: 'Consignment held in static depository custody awaiting client dispatch instructions or routing assignment.',
+          },
+          {
+            id: `cp-${Date.now()}-3`,
+            timestamp: 'Awaiting Transit Orders',
+            title: 'Airside Transfer & Specie Convoy Dispatch',
+            location: 'Corridor Transit Sector',
+            facility: 'Pending Transit Corridor Assignment',
+            status: 'pending',
+            officer: 'Specie Escort Detail',
+            officerId: 'PENDING-DISPATCH',
+            notes: 'Air-specie or armored carrier flight plan will be generated once transit movement is scheduled.',
+          },
+          {
+            id: `cp-${Date.now()}-4`,
+            timestamp: eta,
+            title: 'Final Handover & Biometric Acceptance',
+            location: `${destinationCity} Receiving Sector`,
+            facility: receiverAddress || 'Pending Recipient Facility',
+            status: 'pending',
+            officer: receiverName ? `Designated Receiver: ${receiverName}` : 'Designated Authorized Consignee',
+            officerId: 'PENDING-VERIFICATION',
+            notes: 'Physical handover verification and biometric seal audit upon final delivery.',
+          },
+        ]
+      : [
+          {
+            id: `cp-${Date.now()}-1`,
+            timestamp: '14 Sep 2026, 08:30 CDT',
+            title: 'Shipper Handover & Custody Seal Verification',
+            location: `${originCity} Corridor`,
+            facility: originAddress || originFacility,
+            status: 'completed',
+            officer: 'Agent T. Vance (ID: #AV-CHI-992)',
+            officerId: 'AV-CHI-992',
+            sealId: `SEAL-${client.clientCode}-A`,
+            hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
+            notes: `Precious bullion item received from shipper ${shipperName || client.name}. Calibrated weight confirmed at ${shippingWeight}. Dual tamper-evident container locked.`,
+          },
+          {
+            id: `cp-${Date.now()}-2`,
+            timestamp: '14 Sep 2026, 11:45 CDT',
+            title: 'Airside Loading & Aircraft Specie Clearance',
+            location: `${originCity} Regional Airside Apron`,
+            facility: 'VIP Air Cargo Apron Stand #4',
+            status: 'completed',
+            officer: 'Flight Security Lead K. Bennett',
+            officerId: 'AV-AIR-301',
+            sealId: `SEAL-${client.clientCode}-B`,
+            hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
+            notes: 'Tamper seal intact. IoT electronic tracking beacon confirmed online. Specie cask locked in pressurized aircraft hold.',
+          },
+          {
+            id: `cp-${Date.now()}-3`,
+            timestamp: '15 Sep 2026, 02:15 EDT',
+            title: 'Airborne In-Flight Corridor Transit (FL280)',
+            location: 'Midwest Regional Airspace',
+            facility: `Flight ${trackingNumber} (Cruising FL280)`,
+            status: 'current',
+            officer: 'Captain R. Vance & Marshal D. Miller',
+            officerId: 'US-AIR-410',
+            sealId: `AES-${client.clientCode}-ACTIVE`,
+            hash: 'SHA256:' + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2),
+            notes: 'Aircraft cruising at FL280 with active radar downlink. All environmental sensors nominal. Direct approach vector into sector.',
+          },
+          {
+            id: `cp-${Date.now()}-4`,
+            timestamp: eta.includes('/') ? `${eta}, 14:00 EDT (Estimated Delivery)` : `${eta} (Estimated Delivery)`,
+            title: `${destinationCity} Airside Reception & Final Handover Acceptance`,
+            location: `${destinationCity} Airside ➔ Destination Doorstep`,
+            facility: receiverAddress || destFacility,
+            status: 'pending',
+            officer: receiverName ? `Designated Receiver: ${receiverName} (${receiverContact})` : 'Designated Authorized Consignee',
+            officerId: 'PENDING-VERIFICATION',
+            notes: `Dual photographic identification & biometric PIN signature required from receiver ${receiverName || 'consignee'} upon physical delivery handover.`,
+          },
+        ],
     telemetry: {
       electronicSeal: {
-        id: `AES-${client.clientCode}-ACTIVE`,
+        id: `AES-${client.clientCode}-${isInitiallyStaged ? 'STAGED' : 'ACTIVE'}`,
         status: 'SECURE',
-        battery: '99.4%',
-        lastPing: '2 mins ago',
+        battery: '99.8%',
+        lastPing: 'Just now',
       },
       gForce: {
-        current: 1.01,
-        maxRecorded: 1.15,
+        current: 1.00,
+        maxRecorded: 1.05,
         threshold: 3.5,
         unit: 'G',
       },
@@ -492,39 +571,41 @@ export async function createDedicatedShipmentForClient(client: {
         unit: 'lux',
       },
       temperature: {
-        current: 21.2,
+        current: 20.5,
         min: 19.5,
-        max: 22.8,
+        max: 21.5,
         unit: '°C',
       },
       gps: {
-        lat: (originCoords[0] + destCoords[0]) / 2,
-        lng: (originCoords[1] + destCoords[1]) / 2,
-        altitude: '28,000 ft',
-        speed: '440 knots',
+        lat: isInitiallyStaged ? originCoords[0] : (originCoords[0] + destCoords[0]) / 2,
+        lng: isInitiallyStaged ? originCoords[1] : (originCoords[1] + destCoords[1]) / 2,
+        altitude: isInitiallyStaged ? '0 ft (Subterranean Vault)' : '28,000 ft',
+        speed: isInitiallyStaged ? '0 kts (Stationary)' : '440 knots',
         satellites: 14,
         signalStrength: '99%',
-        geofenceStatus: 'CORRIDOR_COMPLIANT',
+        geofenceStatus: isInitiallyStaged ? 'VAULT_SECURED' : 'CORRIDOR_COMPLIANT',
       },
       escort: {
-        code: `ESC-AIR-${Math.floor(100 + Math.random() * 900)}`,
-        unit: 'AurumVault Armed Air-Specie Courier Detail',
-        protocol: 'Lloyd’s of London Air-Specie Protection Protocol Tier-II',
+        code: `ESC-SEC-${Math.floor(100 + Math.random() * 900)}`,
+        unit: isInitiallyStaged ? 'AurumVault Subterranean Vault Custody Detail' : 'AurumVault Armed Air-Specie Courier Detail',
+        protocol: isInitiallyStaged ? 'Lloyd’s of London Depository Vault Protocol Tier-IV' : 'Lloyd’s of London Air-Specie Protection Protocol Tier-II',
       },
     },
     manifest: {
-      itemType: 'Precious Air-Specie Consignment',
-      description: `Chartered Gold Specie Flight Package (Shipper: ${shipperName}, Receiver: ${receiverName})`,
+      itemType: isInitiallyStaged ? 'Allocated Specie Holding (Depository Staging)' : 'Precious Air-Specie Consignment',
+      description: isInitiallyStaged
+        ? `Allocated Gold Bullion Parcel (Depository Staging: ${client.name})`
+        : `Chartered Gold Specie Flight Package (Shipper: ${shipperName || 'Authorized Depositor'}, Receiver: ${receiverName || 'Authorized Consignee'})`,
       grossWeight: shippingWeight,
       netFineWeight: `${shippingWeight} Fine Specie`,
       fineness: '999.9 / 1000 Au',
       sealNumber: `SEAL-${client.clientCode}-A`,
       assayLab: 'Swiss Precious Metals & Assayer Certification',
       assayCertNumber: `ASSAY-${client.clientCode}`,
-      declaredValue: formatDeclaredValue(client.declaredValue || '$16,355.00 USD'),
+      declaredValue: declaredValFormatted,
       underwriter: 'Lloyd’s of London Specie Syndicate #33',
       policyNumber: `LL-SPEC-${Math.floor(10000 + Math.random() * 90000)}-US`,
-      securityTier: 'TIER-II DUAL CUSTODY CHARTERED AIR-SPECIE TRANSIT',
+      securityTier: isInitiallyStaged ? 'TIER-IV SUBTERRANEAN STATIC VAULT CUSTODY' : 'TIER-II DUAL CUSTODY CHARTERED AIR-SPECIE TRANSIT',
     },
   }
 
@@ -565,14 +646,14 @@ export async function updateShipmentDetails(
   }
   if (!existing) return null
 
-  const shipperName = updates.shipperName !== undefined ? updates.shipperName : (existing.shipperName || 'Linda S Hudson')
+  const shipperName = updates.shipperName !== undefined ? updates.shipperName : (existing.shipperName || '')
   const originCity = updates.originCity !== undefined ? updates.originCity : existing.origin.city
-  const shipperAddress = updates.shipperAddress !== undefined ? updates.shipperAddress : (existing.shipperAddress || '1365 Fremont Dr, Hanover Park, IL 60133')
-  const shipperPhone = updates.shipperPhone !== undefined ? updates.shipperPhone : (existing.shipperPhone || '+1 (470) 305-9614')
+  const shipperAddress = updates.shipperAddress !== undefined ? updates.shipperAddress : (existing.shipperAddress || '')
+  const shipperPhone = updates.shipperPhone !== undefined ? updates.shipperPhone : (existing.shipperPhone || '')
 
-  const receiverName = updates.receiverName !== undefined ? updates.receiverName : (existing.receiverName || 'Chris Bucksath')
-  const receiverContact = updates.receiverContact !== undefined ? updates.receiverContact : (existing.receiverContact || '+1 (859) 907-3706')
-  const receiverAddress = updates.receiverAddress !== undefined ? updates.receiverAddress : (existing.receiverAddress || '321 Pimlico Ct Crittenden Ky 41030')
+  const receiverName = updates.receiverName !== undefined ? updates.receiverName : (existing.receiverName || '')
+  const receiverContact = updates.receiverContact !== undefined ? updates.receiverContact : (existing.receiverContact || '')
+  const receiverAddress = updates.receiverAddress !== undefined ? updates.receiverAddress : (existing.receiverAddress || '')
   const destinationCity = updates.destinationCity !== undefined ? updates.destinationCity : existing.destination.city
 
   const shippingWeight = updates.shippingWeight !== undefined ? updates.shippingWeight : (existing.shippingWeight || existing.manifest.grossWeight)
@@ -592,23 +673,32 @@ export async function updateShipmentDetails(
   const isPaused = updates.isPaused !== undefined ? Boolean(updates.isPaused) : (existing.isPaused ?? false)
   const speedMultiplier = updates.speedMultiplier !== undefined ? Number(updates.speedMultiplier) : (existing.speedMultiplier ?? 1)
 
-  const carrierFlightNumber = updates.carrierFlightNumber !== undefined ? updates.carrierFlightNumber : (existing.carrierFlightNumber || 'AV-US-93901 / SPECIE-AIR')
+  const carrierFlightNumber = updates.carrierFlightNumber !== undefined ? updates.carrierFlightNumber : (existing.carrierFlightNumber || (statusType === 'staging' ? 'PENDING DISPATCH' : 'AV-US-93901 / SPECIE-AIR'))
   const custodyOfficer = updates.custodyOfficer !== undefined ? updates.custodyOfficer : existing.custodyOfficer
 
   // Recalculate coordinates if origin or destination changed
   const originCoords = resolveCoordinates(originCity)
   const destCoords = resolveCoordinates(destinationCity)
 
-  const originFacility = `${shipperAddress} (Shipper: ${shipperName}, ${shipperPhone})`
-  const destFacility = `${receiverAddress} (Receiver: ${receiverName}, ${receiverContact})`
+  const isStaged = statusType === 'staging' || status.toLowerCase().includes('staging')
+
+  const originFacility = shipperAddress
+    ? (shipperName ? `${shipperAddress} (Shipper: ${shipperName}${shipperPhone ? `, ${shipperPhone}` : ''})` : shipperAddress)
+    : (isStaged ? 'Subterranean Vault Staging Facility' : originCity)
+
+  const destFacility = receiverAddress
+    ? (receiverName ? `${receiverAddress} (Receiver: ${receiverName}${receiverContact ? `, ${receiverContact}` : ''})` : receiverAddress)
+    : (isStaged ? 'Pending Transit Assignment' : destinationCity)
 
   // Update manifest
   const manifest: AssetManifest = {
     ...existing.manifest,
-    description: updates.cargoDescription || `Chartered Gold Specie Flight Package (Shipper: ${shipperName}, Receiver: ${receiverName})`,
+    description: updates.cargoDescription || (isStaged
+      ? `Allocated Specie Parcel (Depository Vault Staging: ${shipperName || 'Client'})`
+      : `Chartered Gold Specie Flight Package (Shipper: ${shipperName || 'Authorized Depositor'}, Receiver: ${receiverName || 'Authorized Consignee'})`),
     grossWeight: shippingWeight,
     netFineWeight: `${shippingWeight} Fine Specie`,
-    declaredValue: updates.declaredValue ? formatDeclaredValue(updates.declaredValue) : existing.manifest.declaredValue,
+    declaredValue: updates.declaredValue !== undefined ? formatDeclaredValue(updates.declaredValue) : existing.manifest.declaredValue,
   }
 
   // Update checkpoints to reflect new names & locations, or use explicit checkpoints if provided
@@ -618,16 +708,18 @@ export async function updateShipmentDetails(
     if (idx === 0) {
       return {
         ...cp,
-        facility: shipperAddress,
-        notes: `Precious bullion item received from shipper ${shipperName} (${shipperPhone}). Calibrated weight confirmed at ${shippingWeight}. Dual tamper-evident container locked.`,
+        facility: shipperAddress || originFacility,
+        notes: isStaged
+          ? `Precious bullion parcel registered in depository vault. Calibrated weight confirmed at ${shippingWeight}. Vault custody seal intact.`
+          : `Precious bullion item received from shipper ${shipperName || 'depositor'} (${shipperPhone || 'contact on file'}). Calibrated weight confirmed at ${shippingWeight}. Dual tamper-evident container locked.`,
       }
     }
     if (idx === existing.checkpoints.length - 1) {
       return {
         ...cp,
-        facility: receiverAddress,
-        officer: `Designated Receiver: ${receiverName} (${receiverContact})`,
-        notes: `Dual photographic identification & biometric PIN signature required from receiver ${receiverName} upon physical delivery handover.`,
+        facility: receiverAddress || destFacility,
+        officer: receiverName ? `Designated Receiver: ${receiverName} (${receiverContact || 'contact on file'})` : 'Designated Authorized Consignee',
+        notes: `Dual photographic identification & biometric PIN signature required from receiver ${receiverName || 'consignee'} upon physical delivery handover.`,
         timestamp: eta.includes('/') ? `${eta}, 14:00 EDT (Estimated Delivery)` : `${eta} (Estimated Delivery)`,
       }
     }
@@ -642,8 +734,11 @@ export async function updateShipmentDetails(
     ...existing.telemetry,
     gps: {
       ...existing.telemetry.gps,
-      lat: (originCoords[0] + destCoords[0]) / 2,
-      lng: (originCoords[1] + destCoords[1]) / 2,
+      lat: isStaged && progress === 0 ? originCoords[0] : (originCoords[0] + destCoords[0]) / 2,
+      lng: isStaged && progress === 0 ? originCoords[1] : (originCoords[1] + destCoords[1]) / 2,
+      altitude: isStaged && progress === 0 ? '0 ft (Subterranean Vault)' : existing.telemetry.gps.altitude,
+      speed: isStaged && progress === 0 ? '0 kts (Stationary Vault Hold)' : existing.telemetry.gps.speed,
+      geofenceStatus: isStaged && progress === 0 ? 'VAULT_SECURED' : existing.telemetry.gps.geofenceStatus,
     },
   }
 

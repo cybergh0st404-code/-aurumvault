@@ -185,19 +185,20 @@ export function AdminCommandCenter() {
 
   // Expandable initial consignment config in create user form
   const [expandConsignmentConfig, setExpandConsignmentConfig] = useState(false)
+  const [newConsignmentMode, setNewConsignmentMode] = useState<'staging' | 'in-flight'>('staging')
   const [newShipperName, setNewShipperName] = useState('')
-  const [newOrigin, setNewOrigin] = useState('Indiana')
-  const [newShipperAddress, setNewShipperAddress] = useState('State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133.')
-  const [newShipperPhone, setNewShipperPhone] = useState('+1 (470) 305-9614')
-  const [newReceiverName, setNewReceiverName] = useState('Chris Bucksath')
-  const [newReceiverContact, setNewReceiverContact] = useState('+1 (859) 907-3706')
-  const [newReceiverAddress, setNewReceiverAddress] = useState('321 Pimlico Ct Crittenden Ky 41030')
-  const [newDestination, setNewDestination] = useState('Kentucky')
+  const [newOrigin, setNewOrigin] = useState('')
+  const [newShipperAddress, setNewShipperAddress] = useState('')
+  const [newShipperPhone, setNewShipperPhone] = useState('')
+  const [newReceiverName, setNewReceiverName] = useState('')
+  const [newReceiverContact, setNewReceiverContact] = useState('')
+  const [newReceiverAddress, setNewReceiverAddress] = useState('')
+  const [newDestination, setNewDestination] = useState('')
   const [newShippingWeight, setNewShippingWeight] = useState('93.9 g')
-  const [newEta, setNewEta] = useState('17/09/26')
+  const [newEta, setNewEta] = useState('')
   const [newVaultedLots, setNewVaultedLots] = useState<number>(1)
   const [newVaultFacility, setNewVaultFacility] = useState('Geneva Freeport Deep Depository Tier-IV')
-  const [newConsignmentDeclaredValue, setNewConsignmentDeclaredValue] = useState('$16,355.00 USD')
+  const [newConsignmentDeclaredValue, setNewConsignmentDeclaredValue] = useState('$0.00 USD')
 
   const [activeTab, setActiveTab] = useState<'fleet' | 'dispatch' | 'quotes' | 'sensors' | 'users' | 'notices'>('fleet')
   const [filter, setFilter] = useState('all')
@@ -322,20 +323,28 @@ export function AdminCommandCenter() {
           vaultFacility: newVaultFacility,
           declaredValue: formatDeclaredValue(newConsignmentDeclaredValue),
           declaredValueUSD: parseDeclaredValue(newConsignmentDeclaredValue),
+          status: newConsignmentMode === 'staging' ? 'Vault Staging & Depository Custody' : 'In Transit — Chartered Air-Specie Corridor',
+          statusType: newConsignmentMode === 'staging' ? 'staging' : 'in-flight',
+          progress: newConsignmentMode === 'staging' ? 0 : 55,
+          isPaused: newConsignmentMode === 'staging',
           consignment: newUserRole === 'client' ? {
             shipperName: newShipperName || newUserName,
-            origin: newOrigin || 'Indiana',
-            shipperAddress: newShipperAddress || 'State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133.',
-            shipperPhone: newShipperPhone || '+1 (470) 305-9614',
-            receiverName: newReceiverName || 'Chris Bucksath',
-            receiverContact: newReceiverContact || '+1 (859) 907-3706',
-            receiverAddress: newReceiverAddress || '321 Pimlico Ct Crittenden Ky 41030',
-            destination: newDestination || 'Kentucky',
+            origin: newOrigin || (newConsignmentMode === 'staging' ? 'Geneva Depository' : 'Indiana'),
+            shipperAddress: newShipperAddress,
+            shipperPhone: newShipperPhone,
+            receiverName: newReceiverName,
+            receiverContact: newReceiverContact,
+            receiverAddress: newReceiverAddress,
+            destination: newDestination || (newConsignmentMode === 'staging' ? 'Pending Destination Assignment' : 'Kentucky'),
             shippingWeight: newShippingWeight || '93.9 g',
-            eta: newEta || '17/09/26',
+            eta: newEta || (newConsignmentMode === 'staging' ? 'Pending Transit Orders' : '17/09/26'),
             vaultedLots: newVaultedLots,
             vaultFacility: newVaultFacility,
             declaredValue: formatDeclaredValue(newConsignmentDeclaredValue),
+            status: newConsignmentMode === 'staging' ? 'Vault Staging & Depository Custody' : 'In Transit — Chartered Air-Specie Corridor',
+            statusType: newConsignmentMode === 'staging' ? 'staging' : 'in-flight',
+            progress: newConsignmentMode === 'staging' ? 0 : 55,
+            isPaused: newConsignmentMode === 'staging',
           } : undefined,
         }),
       })
@@ -349,7 +358,17 @@ export function AdminCommandCenter() {
         setNewUserOrg('')
         setNewUserClearance('')
         setNewShipperName('')
-        setNewConsignmentDeclaredValue('$16,355.00 USD')
+        setNewOrigin('')
+        setNewShipperAddress('')
+        setNewShipperPhone('')
+        setNewReceiverName('')
+        setNewReceiverContact('')
+        setNewReceiverAddress('')
+        setNewDestination('')
+        setNewShippingWeight('93.9 g')
+        setNewEta('')
+        setNewConsignmentDeclaredValue('$0.00 USD')
+        setNewConsignmentMode('staging')
         setExpandConsignmentConfig(false)
         fetchUsers()
         if (refreshShipmentsFromServer) {
@@ -2731,84 +2750,135 @@ export function AdminCommandCenter() {
 
                       {expandConsignmentConfig ? (
                         <div className="space-y-3 pt-2 border-t border-[#242833]">
+                          <div className="mb-2">
+                            <label className="text-[10px] font-mono text-gray-400 block mb-1.5 font-bold uppercase tracking-wider">
+                              Initial Consignment Status &amp; Mode
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewConsignmentMode('staging')
+                                  if (!newOrigin) setNewOrigin('Geneva Depository')
+                                  if (!newDestination) setNewDestination('Pending Destination Assignment')
+                                }}
+                                className={`rounded-xl border p-2.5 text-left text-xs font-mono transition ${
+                                  newConsignmentMode === 'staging'
+                                    ? 'border-blue-500/50 bg-blue-500/15 text-blue-300 font-bold'
+                                    : 'border-[#2a2f3d] bg-[#161a24] text-gray-400 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-white mb-0.5">
+                                  <Building2 size={13} className="text-blue-400" />
+                                  Vault Staging (Pre-Transit)
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-normal">
+                                  Static vault holding. Shipper/receiver empty, $0 default.
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewConsignmentMode('in-flight')
+                                  if (!newOrigin) setNewOrigin('Indiana')
+                                  if (!newDestination) setNewDestination('Kentucky')
+                                }}
+                                className={`rounded-xl border p-2.5 text-left text-xs font-mono transition ${
+                                  newConsignmentMode === 'in-flight'
+                                    ? 'border-[#dfba6c]/50 bg-[#dfba6c]/15 text-[#dfba6c] font-bold'
+                                    : 'border-[#2a2f3d] bg-[#161a24] text-gray-400 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-white mb-0.5">
+                                  <Plane size={13} className="text-[#dfba6c]" />
+                                  Air-Specie Transit
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-normal">
+                                  Active flight transit corridor with active radar downlinks.
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Name</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Name (Optional for Staging)</label>
                               <input
                                 type="text"
                                 value={newShipperName}
                                 onChange={e => setNewShipperName(e.target.value)}
-                                placeholder={newUserName || 'Linda S Hudson'}
+                                placeholder={newUserName || 'Leave empty or enter shipper name'}
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Origin (State / City)</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Origin (State / City / Vault)</label>
                               <input
                                 type="text"
                                 value={newOrigin}
                                 onChange={e => setNewOrigin(e.target.value)}
-                                placeholder="Indiana"
+                                placeholder={newConsignmentMode === 'staging' ? 'Geneva Depository (Default)' : 'e.g. Indiana'}
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Address</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Address (Optional for Staging)</label>
                               <input
                                 type="text"
                                 value={newShipperAddress}
                                 onChange={e => setNewShipperAddress(e.target.value)}
-                                placeholder="State: Hanover. Pk. Illinois 1365. Fremont Dr.  Zip code :60133."
+                                placeholder="Leave empty for staging or enter facility address"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Phone</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Shipper Phone (Optional)</label>
                               <input
                                 type="text"
                                 value={newShipperPhone}
                                 onChange={e => setNewShipperPhone(e.target.value)}
-                                placeholder="+1 (470) 305-9614"
+                                placeholder="Leave empty or phone number"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Name</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Name (Optional for Staging)</label>
                               <input
                                 type="text"
                                 value={newReceiverName}
                                 onChange={e => setNewReceiverName(e.target.value)}
-                                placeholder="Chris Bucksath"
+                                placeholder="Leave empty for staging / pending assignment"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Contact / Phone</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Contact / Phone (Optional)</label>
                               <input
                                 type="text"
                                 value={newReceiverContact}
                                 onChange={e => setNewReceiverContact(e.target.value)}
-                                placeholder="+1 (859) 907-3706"
+                                placeholder="Leave empty or phone number"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Destination (State / City)</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Destination (State / City / Country)</label>
                               <input
                                 type="text"
                                 value={newDestination}
                                 onChange={e => setNewDestination(e.target.value)}
-                                placeholder="Kentucky"
+                                placeholder={newConsignmentMode === 'staging' ? 'Pending Destination Assignment' : 'e.g. Kentucky'}
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Address</label>
+                              <label className="text-[10px] font-mono text-gray-400 block mb-1">Receiver Address (Optional for Staging)</label>
                               <input
                                 type="text"
                                 value={newReceiverAddress}
                                 onChange={e => setNewReceiverAddress(e.target.value)}
-                                placeholder="321 Pimlico Ct Crittenden Ky 41030"
+                                placeholder="Leave empty for staging or enter recipient address"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white"
                               />
                             </div>
@@ -2828,7 +2898,7 @@ export function AdminCommandCenter() {
                                 type="text"
                                 value={newEta}
                                 onChange={e => setNewEta(e.target.value)}
-                                placeholder="17/09/26"
+                                placeholder={newConsignmentMode === 'staging' ? 'Pending Transit Orders' : '17/09/26'}
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono"
                               />
                             </div>
@@ -2838,7 +2908,7 @@ export function AdminCommandCenter() {
                                 type="text"
                                 value={newConsignmentDeclaredValue}
                                 onChange={e => setNewConsignmentDeclaredValue(e.target.value)}
-                                placeholder="$16,355.00 USD"
+                                placeholder="$0.00 USD"
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono font-bold"
                               />
                             </div>
@@ -2853,7 +2923,7 @@ export function AdminCommandCenter() {
                                 className="h-9 w-full rounded-lg border border-[#2a2f3d] bg-[#161a24] px-3 text-xs text-white font-mono font-bold"
                               />
                             </div>
-                            <div>
+                            <div className="sm:col-span-2">
                               <label className="text-[10px] font-mono text-gray-400 block mb-1">Depository Vault Facility</label>
                               <select
                                 value={newVaultFacility}
@@ -2872,7 +2942,7 @@ export function AdminCommandCenter() {
                         </div>
                       ) : (
                         <p className="text-[11px] text-gray-400 font-mono">
-                          Default route (<span className="text-white">Indiana ➔ Kentucky</span>, Shipper: <span className="text-white">{newUserName || 'Client'}</span>, Receiver: <span className="text-white">Chris Bucksath</span>, Weight: <span className="text-white">93.9 g</span>, <span className="text-[#dfba6c]">1 Vaulted Lot</span>) will be provisioned. You can modify these anytime via &quot;Edit Details &amp; Radar&quot;.
+                          Default setup: <span className="text-white">Subterranean Vault Staging</span> (<span className="text-blue-300">0% progress, $0.00 USD declared value</span>, no shipper/receiver required until gold dispatch). You can configure custom routing anytime via &quot;Edit Details &amp; Radar&quot;.
                         </p>
                       )}
                     </div>

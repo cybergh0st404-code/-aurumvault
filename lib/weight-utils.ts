@@ -105,30 +105,36 @@ export function formatGoldWeight(ozt: number): {
 
 /**
  * Format any numeric or raw currency string into standard Swiss Lloyd's Specie valuation:
- * e.g. 16355 -> "$16,355.00 USD"
+ * e.g. 0 -> "$0.00 USD"
+ * 16355 -> "$16,355.00 USD"
  * "$16,355" -> "$16,355.00 USD"
  */
 export function formatDeclaredValue(val: string | number | undefined | null): string {
-  if (val === undefined || val === null) return '$16,355.00 USD'
+  if (val === undefined || val === null) return '$0.00 USD'
   if (typeof val === 'number') {
-    if (isNaN(val) || val <= 0) return '$16,355.00 USD'
+    if (isNaN(val) || val < 0) return '$0.00 USD'
     return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
   }
   const cleanStr = String(val).trim()
+  if (!cleanStr || cleanStr === '0' || cleanStr === '$0' || cleanStr === '$0.00' || cleanStr === '$0.00 USD') {
+    return '$0.00 USD'
+  }
   const num = parseFloat(cleanStr.replace(/[^0-9.]/g, ''))
-  if (isNaN(num) || num <= 0) return '$16,355.00 USD'
+  if (isNaN(num) || num < 0) return '$0.00 USD'
   return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
 }
 
 /**
  * Parse any currency string into numeric USD:
  * e.g. "$16,355.00 USD" -> 16355
+ * "$0.00 USD" -> 0
  */
 export function parseDeclaredValue(val: string | number | undefined | null): number {
-  if (val === undefined || val === null) return 16355
-  if (typeof val === 'number') return isNaN(val) || val <= 0 ? 16355 : val
+  if (val === undefined || val === null) return 0
+  if (typeof val === 'number') return isNaN(val) || val < 0 ? 0 : val
   const cleanStr = String(val).trim()
+  if (!cleanStr || cleanStr === '0' || cleanStr === '$0' || cleanStr === '$0.00') return 0
   const num = parseFloat(cleanStr.replace(/[^0-9.]/g, ''))
-  return isNaN(num) || num <= 0 ? 16355 : num
+  return isNaN(num) || num < 0 ? 0 : num
 }
 

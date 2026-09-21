@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       clientName,
       lotCount: lotCount ? Number(lotCount) : 1,
       goldWeight: goldWeight || '93.9 g',
-      declaredValueUSD: declaredValueUSD ? Number(declaredValueUSD) : 16355,
+      declaredValueUSD: declaredValueUSD !== undefined ? Number(declaredValueUSD) : 0,
       vaultFacility,
     })
 

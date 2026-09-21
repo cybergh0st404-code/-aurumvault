@@ -27,7 +27,7 @@ export function ClientNoticeModal({
   message,
   clientName,
   clientCode,
-  recipientName = 'Christopher Bucksath',
+  recipientName = 'Authorized Consignee',
 }: ClientNoticeModalProps) {
   if (!isOpen) return null
 

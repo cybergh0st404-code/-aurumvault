@@ -88,11 +88,11 @@ export function EditUserConsignmentModal({
 
   // Cargo & Flight state
   const [shippingWeight, setShippingWeight] = useState('93.9 g')
-  const [eta, setEta] = useState('17/09/26')
-  const [declaredValue, setDeclaredValue] = useState('$16,355.00 USD')
-  const [carrierFlightNumber, setCarrierFlightNumber] = useState('AV-US-93901 / SPECIE-AIR')
-  const [custodyOfficer, setCustodyOfficer] = useState('Chief Flight Marshal D. Miller (ID: #US-AIR-410)')
-  const [status, setStatus] = useState('In Transit — Chartered Air-Specie Corridor')
+  const [eta, setEta] = useState('Pending Transit Orders')
+  const [declaredValue, setDeclaredValue] = useState('$0.00 USD')
+  const [carrierFlightNumber, setCarrierFlightNumber] = useState('PENDING DISPATCH')
+  const [custodyOfficer, setCustodyOfficer] = useState('Senior Vault Depository Marshal')
+  const [status, setStatus] = useState('Vault Staging & Depository Custody')
 
   // Depository Vault & Bullion Lots state (supports fluid backspacing & string while typing)
   const [vaultedLots, setVaultedLots] = useState<number | string>(1)
@@ -100,8 +100,8 @@ export function EditUserConsignmentModal({
   const [bullionTitle, setBullionTitle] = useState('')
 
   // Radar Telemetry state
-  const [progress, setProgress] = useState(55)
-  const [isPaused, setIsPaused] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [isPaused, setIsPaused] = useState(true)
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1)
 
   // Status & Feedback
@@ -148,46 +148,46 @@ export function EditUserConsignmentModal({
     }
 
     if (shipment) {
-      setShipperName(shipment.shipperName || user.name || 'Linda S Hudson')
-      setOrigin(shipment.origin?.city || 'Indiana')
-      setShipperAddress(shipment.shipperAddress || shipment.origin?.facility?.split('(Shipper:')[0]?.trim() || 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.')
-      setShipperPhone(shipment.shipperPhone || '+1 (470) 305-9614')
+      setShipperName(shipment.shipperName !== undefined ? shipment.shipperName : (user.name || ''))
+      setOrigin(shipment.origin?.city || '')
+      setShipperAddress(shipment.shipperAddress !== undefined ? shipment.shipperAddress : '')
+      setShipperPhone(shipment.shipperPhone !== undefined ? shipment.shipperPhone : '')
 
-      setReceiverName(shipment.receiverName || 'Chris Bucksath')
-      setReceiverContact(shipment.receiverContact || '+1 (859) 907-3706')
-      setReceiverAddress(shipment.receiverAddress || shipment.destination?.facility?.split('(Receiver:')[0]?.trim() || '321 Pimlico Ct Crittenden Ky 41030')
-      setDestination(shipment.destination?.city || 'Kentucky')
+      setReceiverName(shipment.receiverName !== undefined ? shipment.receiverName : '')
+      setReceiverContact(shipment.receiverContact !== undefined ? shipment.receiverContact : '')
+      setReceiverAddress(shipment.receiverAddress !== undefined ? shipment.receiverAddress : '')
+      setDestination(shipment.destination?.city || '')
 
       setShippingWeight(shipment.shippingWeight || shipment.manifest?.grossWeight || '93.9 g')
-      setEta(shipment.eta || '17/09/26')
-      setDeclaredValue(shipment.manifest?.declaredValue || '$16,355.00 USD')
-      setCarrierFlightNumber(shipment.carrierFlightNumber || 'AV-US-93901 / SPECIE-AIR')
-      setCustodyOfficer(shipment.custodyOfficer || 'Chief Flight Marshal D. Miller (ID: #US-AIR-410)')
-      setStatus(shipment.status || 'In Transit — Chartered Air-Specie Corridor')
+      setEta(shipment.eta || '')
+      setDeclaredValue(shipment.manifest?.declaredValue !== undefined ? formatDeclaredValue(shipment.manifest.declaredValue) : '$0.00 USD')
+      setCarrierFlightNumber(shipment.carrierFlightNumber || '')
+      setCustodyOfficer(shipment.custodyOfficer || 'Senior Custody Officer')
+      setStatus(shipment.status || 'Vault Staging & Depository Custody')
 
-      setProgress(shipment.progress ?? 55)
+      setProgress(shipment.progress ?? 0)
       setIsPaused(Boolean(shipment.isPaused))
       setSpeedMultiplier(Number(shipment.speedMultiplier) || 1)
     } else {
-      // Default initial consignment values
-      setShipperName(user.name || 'Linda S Hudson')
-      setOrigin('Indiana')
-      setShipperAddress('State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.')
-      setShipperPhone('+1 (470) 305-9614')
+      // Default initial consignment values (clean staging mode)
+      setShipperName(user.name || '')
+      setOrigin('Geneva Depository')
+      setShipperAddress('')
+      setShipperPhone('')
 
-      setReceiverName('Chris Bucksath')
-      setReceiverContact('+1 (859) 907-3706')
-      setReceiverAddress('321 Pimlico Ct Crittenden Ky 41030')
-      setDestination('Kentucky')
+      setReceiverName('')
+      setReceiverContact('')
+      setReceiverAddress('')
+      setDestination('Pending Destination Assignment')
 
       setShippingWeight('93.9 g')
-      setEta('17/09/26')
-      setDeclaredValue('$16,355.00 USD')
-      setCarrierFlightNumber('AV-US-93901 / SPECIE-AIR')
-      setCustodyOfficer('Chief Flight Marshal D. Miller (ID: #US-AIR-410)')
-      setStatus('In Transit — Chartered Air-Specie Corridor')
-      setProgress(55)
-      setIsPaused(false)
+      setEta('Pending Transit Orders')
+      setDeclaredValue('$0.00 USD')
+      setCarrierFlightNumber('PENDING DISPATCH')
+      setCustodyOfficer('Senior Vault Depository Marshal')
+      setStatus('Vault Staging & Depository Custody')
+      setProgress(0)
+      setIsPaused(true)
       setSpeedMultiplier(1)
     }
   }, [isOpen, user?.id])
@@ -719,11 +719,41 @@ export function EditUserConsignmentModal({
                 </p>
               </div>
 
+              {/* Quick Mode Preset: Vault Staging ($0, Stationary) vs Air-Specie Transit */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3.5 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <Building2 size={16} className="text-blue-400 shrink-0" />
+                  <div>
+                    <span className="text-white font-bold">Depository Staging Mode: </span>
+                    <span className="text-gray-300">Gold held in static vault custody ($0.00 value &amp; transit fields unassigned until movement)</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus('Vault Staging & Depository Custody')
+                    setProgress(0)
+                    setIsPaused(true)
+                    setDeclaredValue('$0.00 USD')
+                    setCarrierFlightNumber('PENDING DISPATCH')
+                    setCustodyOfficer('Senior Vault Depository Marshal')
+                    setEta('Pending Transit Orders')
+                    setDestination('Pending Destination Assignment')
+                    setReceiverName('')
+                    setReceiverContact('')
+                    setReceiverAddress('')
+                  }}
+                  className="rounded-xl bg-blue-500/25 border border-blue-500/50 px-3 py-1.5 text-xs font-bold text-blue-200 hover:bg-blue-500/40 transition shrink-0"
+                >
+                  ⚡ Set to Vault Staging ($0)
+                </button>
+              </div>
+
               {/* Shipper & Origin Box */}
               <div className="rounded-2xl border border-[#242833] bg-[#12151e] p-5 space-y-4">
                 <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#dfba6c] uppercase tracking-wider">
                   <MapPin size={15} />
-                  <span>1. Shipper & Origin Information</span>
+                  <span>1. Shipper &amp; Origin Information (Optional for Staging)</span>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 text-xs">
@@ -735,23 +765,21 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={shipperName}
                       onChange={e => setShipperName(e.target.value)}
-                      placeholder="e.g. Linda S Hudson"
+                      placeholder="Leave empty or enter shipper name"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-mono text-gray-400 mb-1">
-                      Origin State / City:
+                      Origin State / City / Vault:
                     </label>
                     <input
                       type="text"
                       value={origin}
                       onChange={e => setOrigin(e.target.value)}
-                      placeholder="e.g. Indiana"
+                      placeholder="e.g. Geneva Depository / Indiana"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
 
@@ -763,9 +791,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={shipperAddress}
                       onChange={e => setShipperAddress(e.target.value)}
-                      placeholder="e.g. State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133."
+                      placeholder="Leave empty for staging or enter facility address"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
 
@@ -777,9 +804,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={shipperPhone}
                       onChange={e => setShipperPhone(e.target.value)}
-                      placeholder="e.g. +1 (470) 305-9614"
+                      placeholder="Leave empty or phone number"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono"
-                      required
                     />
                   </div>
                 </div>
@@ -789,7 +815,7 @@ export function EditUserConsignmentModal({
               <div className="rounded-2xl border border-[#242833] bg-[#12151e] p-5 space-y-4">
                 <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#dfba6c] uppercase tracking-wider">
                   <User size={15} />
-                  <span>2. Designated Receiver & Destination</span>
+                  <span>2. Designated Receiver &amp; Destination (Optional for Staging)</span>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 text-xs">
@@ -801,9 +827,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={receiverName}
                       onChange={e => setReceiverName(e.target.value)}
-                      placeholder="e.g. Chris Bucksath"
+                      placeholder="Leave empty for staging / pending assignment"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
 
@@ -815,9 +840,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={receiverContact}
                       onChange={e => setReceiverContact(e.target.value)}
-                      placeholder="e.g. +1 (859) 907-3706"
+                      placeholder="Leave empty or phone number"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono"
-                      required
                     />
                   </div>
 
@@ -829,9 +853,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={receiverAddress}
                       onChange={e => setReceiverAddress(e.target.value)}
-                      placeholder="e.g. 321 Pimlico Ct Crittenden Ky 41030"
+                      placeholder="Leave empty for staging or enter recipient address"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
 
@@ -843,9 +866,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={destination}
                       onChange={e => setDestination(e.target.value)}
-                      placeholder="e.g. Kentucky"
+                      placeholder="Leave empty for staging / pending destination"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-sans"
-                      required
                     />
                   </div>
                 </div>
@@ -907,9 +929,8 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={eta}
                       onChange={e => setEta(e.target.value)}
-                      placeholder="e.g. 17/09/26"
+                      placeholder="e.g. Pending Transit Orders or 17/09/26"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono"
-                      required
                     />
                   </div>
 
@@ -921,7 +942,7 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={declaredValue}
                       onChange={e => setDeclaredValue(e.target.value)}
-                      placeholder="e.g. $16,355.00 USD"
+                      placeholder="e.g. $0.00 USD"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
                     />
                     <div className="mt-1 text-[10px] text-[#dfba6c] font-mono flex items-center gap-1 truncate">
@@ -1078,7 +1099,7 @@ export function EditUserConsignmentModal({
                       type="text"
                       value={declaredValue}
                       onChange={e => setDeclaredValue(e.target.value)}
-                      placeholder="e.g. $16,355.00 USD"
+                      placeholder="e.g. $0.00 USD"
                       className="w-full rounded-xl border border-[#2a2f3d] bg-[#161a24] px-3.5 py-2.5 text-white focus:border-[#dfba6c] focus:outline-none font-mono font-bold"
                     />
                     <div className="mt-1 text-[10px] text-[#dfba6c] font-mono flex items-center gap-1 truncate">

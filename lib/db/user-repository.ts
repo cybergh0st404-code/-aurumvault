@@ -137,9 +137,12 @@ export async function createUser(data: {
   if (data.role === 'client' && clientCode) {
     try {
       const { createDedicatedShipmentForClient } = await import('./shipment-repository')
-      const rawVal = (data as any).declaredValueUSD || data.consignment?.declaredValue
-      const declaredUSD = rawVal ? parseFloat(String(rawVal).replace(/[^0-9.]/g, '')) || 16355 : 16355
-      const declaredStr = data.consignment?.declaredValue || (rawVal ? `$${declaredUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD` : '$16,355.00 USD')
+      const { parseDeclaredValue, formatDeclaredValue } = await import('@/lib/weight-utils')
+      const rawVal = (data as any).declaredValueUSD !== undefined ? (data as any).declaredValueUSD : data.consignment?.declaredValue
+      const declaredUSD = parseDeclaredValue(rawVal)
+      const declaredStr = data.consignment?.declaredValue !== undefined
+        ? formatDeclaredValue(data.consignment.declaredValue)
+        : formatDeclaredValue(declaredUSD)
 
       await createDedicatedShipmentForClient({
         clientCode,
@@ -155,6 +158,8 @@ export async function createUser(data: {
         eta: data.consignment?.eta,
         destination: data.consignment?.destination,
         declaredValue: declaredStr,
+        status: (data.consignment as any)?.status,
+        statusType: (data.consignment as any)?.statusType,
       })
     } catch (err) {
       console.error('Failed to auto-create client shipment in SQLite:', err)
@@ -162,8 +167,9 @@ export async function createUser(data: {
 
     // Also auto-provision client's dedicated vaulted bullion lot(s) in SQLite
     try {
-      const rawVal = (data as any).declaredValueUSD || data.consignment?.declaredValue
-      const declaredUSD = rawVal ? parseFloat(String(rawVal).replace(/[^0-9.]/g, '')) || 16355 : 16355
+      const { parseDeclaredValue } = await import('@/lib/weight-utils')
+      const rawVal = (data as any).declaredValueUSD !== undefined ? (data as any).declaredValueUSD : data.consignment?.declaredValue
+      const declaredUSD = parseDeclaredValue(rawVal)
 
       const { syncClientVaultHoldings } = await import('./vault-repository')
       await syncClientVaultHoldings({

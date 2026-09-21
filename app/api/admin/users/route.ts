@@ -44,6 +44,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name, email, password, and role are required.' }, { status: 400 })
     }
 
+    const { parseDeclaredValue, formatDeclaredValue } = await import('@/lib/weight-utils')
+
+    const isStagingInitial = body.statusType === 'staging' ||
+      (body.status ? body.status.toLowerCase().includes('staging') : false) ||
+      (!body.receiverName && !body.destination && !body.consignment?.receiverName)
+
+    const rawVal = body.declaredValueUSD !== undefined
+      ? body.declaredValueUSD
+      : (body.consignment?.declaredValue !== undefined ? body.consignment.declaredValue : body.declaredValue)
+    const declaredUSD = parseDeclaredValue(rawVal)
+
     const created = await createUser({
       email,
       password,
@@ -54,19 +65,23 @@ export async function POST(request: Request) {
       securityClearance,
       vaultedLots: body.vaultedLots || 1,
       vaultFacility: body.vaultFacility || 'Geneva Freeport Deep Depository Tier-IV',
-      declaredValueUSD: body.declaredValueUSD || (body.consignment?.declaredValue ? parseFloat(String(body.consignment.declaredValue).replace(/[^0-9.]/g, '')) : undefined),
+      declaredValueUSD: declaredUSD,
       consignment: body.consignment || (role === 'client' ? {
-        shipperName: body.shipperName || name,
-        origin: body.origin || 'Indiana',
-        shipperAddress: body.shipperAddress || 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
-        shipperPhone: body.shipperPhone || '+1 (470) 305-9614',
-        receiverName: body.receiverName || 'Chris Bucksath',
-        receiverContact: body.receiverContact || '+1 (859) 907-3706',
-        receiverAddress: body.receiverAddress || '321 Pimlico Ct Crittenden Ky 41030',
+        shipperName: body.shipperName !== undefined ? body.shipperName : name,
+        origin: body.origin || (isStagingInitial ? 'Geneva Depository' : 'Indiana'),
+        shipperAddress: body.shipperAddress || '',
+        shipperPhone: body.shipperPhone || '',
+        receiverName: body.receiverName || '',
+        receiverContact: body.receiverContact || '',
+        receiverAddress: body.receiverAddress || '',
         shippingWeight: body.shippingWeight || body.goldWeight || '93.9 g',
-        eta: body.eta || '17/09/26',
-        destination: body.destination || 'Kentucky',
-        declaredValue: body.declaredValue || '$16,355.00 USD',
+        eta: body.eta || (isStagingInitial ? 'Pending Transit Orders' : '17/09/26'),
+        destination: body.destination || (isStagingInitial ? 'Pending Destination Assignment' : 'Kentucky'),
+        declaredValue: formatDeclaredValue(rawVal),
+        status: body.status || (isStagingInitial ? 'Vault Staging & Depository Custody' : 'In Transit — Chartered Air-Specie Corridor'),
+        statusType: body.statusType || (isStagingInitial ? 'staging' : 'in-flight'),
+        progress: body.progress !== undefined ? body.progress : (isStagingInitial ? 0 : 55),
+        isPaused: body.isPaused !== undefined ? body.isPaused : isStagingInitial,
       } : undefined),
     } as any)
 
@@ -110,15 +125,19 @@ export async function PATCH(request: Request) {
       })
 
       // If consignment update payload is present, update user's shipment
-      if (body.consignment || body.shipperName || body.shipmentId || body.receiverName || body.declaredValue || body.declaredValueUSD) {
+      if (body.consignment || body.shipperName !== undefined || body.shipmentId || body.receiverName !== undefined || body.declaredValue !== undefined || body.declaredValueUSD !== undefined) {
         const { updateShipmentDetails, getShipmentsByClientCode, createDedicatedShipmentForClient } = await import('@/lib/db/shipment-repository')
+        const { parseDeclaredValue, formatDeclaredValue } = await import('@/lib/weight-utils')
         const clientCode = body.clientCode || updated?.client_code
         if (clientCode) {
           const userShipments = await getShipmentsByClientCode(clientCode)
           const targetShipmentId = body.shipmentId || userShipments[0]?.id
 
           const cData = body.consignment || body
-          const declaredVal = cData.declaredValue || body.declaredValue || (body.declaredValueUSD ? `$${Number(body.declaredValueUSD).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD` : undefined)
+          const rawDeclared = cData.declaredValue !== undefined
+            ? cData.declaredValue
+            : (body.declaredValue !== undefined ? body.declaredValue : body.declaredValueUSD)
+          const declaredVal = rawDeclared !== undefined ? formatDeclaredValue(rawDeclared) : undefined
 
           if (targetShipmentId) {
             await updateShipmentDetails(targetShipmentId, {
@@ -157,6 +176,8 @@ export async function PATCH(request: Request) {
               eta: cData.eta,
               destination: cData.destinationCity || cData.destination,
               declaredValue: declaredVal,
+              status: cData.status,
+              statusType: cData.statusType,
             })
           }
         }
@@ -172,8 +193,11 @@ export async function PATCH(request: Request) {
 
       if (cClientCode && (cLots !== undefined || cGoldWeight !== undefined || cFacility || hasDeclaredValue)) {
         try {
-          const rawDeclared = body.declaredValueUSD || cConsignment?.declaredValue || body.declaredValue
-          const parsedValUSD = rawDeclared !== undefined ? parseFloat(String(rawDeclared).replace(/[^0-9.]/g, '')) : undefined
+          const { parseDeclaredValue } = await import('@/lib/weight-utils')
+          const rawDeclared = body.declaredValueUSD !== undefined
+            ? body.declaredValueUSD
+            : (cConsignment?.declaredValue !== undefined ? cConsignment.declaredValue : body.declaredValue)
+          const parsedValUSD = rawDeclared !== undefined ? parseDeclaredValue(rawDeclared) : undefined
 
           const { syncClientVaultHoldings } = await import('@/lib/db/vault-repository')
           await syncClientVaultHoldings({
@@ -182,7 +206,7 @@ export async function PATCH(request: Request) {
             lotCount: cLots !== undefined ? Number(cLots) : undefined,
             goldWeight: cGoldWeight,
             vaultFacility: cFacility,
-            declaredValueUSD: parsedValUSD && !isNaN(parsedValUSD) ? parsedValUSD : undefined,
+            declaredValueUSD: parsedValUSD !== undefined && !isNaN(parsedValUSD) ? parsedValUSD : undefined,
           })
         } catch (vaultErr) {
           console.error('Failed to sync vault holdings during profile update:', vaultErr)

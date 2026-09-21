@@ -136,130 +136,129 @@ export function ClientDashboard() {
   const userFallbackShipment: Shipment = {
     id: `GOLD-2026-${user?.clientCode?.replace(/[^A-Z0-9]/gi, '') || 'SECURE'}`,
     trackingNumber: user?.clientCode ? `AV-${user.clientCode}` : 'AV-PENDING-ALLOCATION',
-    status: 'In Transit — Chartered Air-Specie Corridor',
-    statusType: 'in-flight',
+    status: 'Vault Staging & Depository Custody',
+    statusType: 'staging',
     category: 'Precious Metals & Bullion',
     origin: {
-      city: 'Indiana',
-      country: 'United States',
-      facility: `State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133. (Shipper: ${user?.name || 'Linda S Hudson'}, +1 470-305-9614)`,
-      code: 'IND-ORD',
-      coords: [41.9961, -88.1473],
+      city: 'Geneva Depository',
+      country: 'Switzerland',
+      facility: 'Geneva Freeport Deep Depository Tier-IV (Subterranean Vault Staging)',
+      code: 'GVA-VAULT',
+      coords: [46.2044, 6.1432],
     },
     destination: {
-      city: 'Kentucky',
-      country: 'United States',
-      facility: '321 Pimlico Ct, Crittenden, KY 41030 (Receiver: Chris Bucksath, +1 859-907-3706)',
-      code: 'KY-CVG',
-      coords: [38.7845, -84.6063],
+      city: 'Pending Destination Assignment',
+      country: 'Global Depository Network',
+      facility: 'Awaiting Transit Destination Orders',
+      code: 'SEC-VAULT',
+      coords: [46.2044, 6.1432],
     },
     currentLocation: {
-      name: 'Midwest Airspace Flight Corridor (FL280 • Heading 142°)',
-      coords: [39.1031, -84.5120],
-      statusText: 'Cruising FL280 • Chartered Air-Specie Convoy Flight',
+      name: 'Geneva Freeport Subterranean Specie Depository',
+      coords: [46.2044, 6.1432],
+      statusText: 'Vault Staged • Secured in Deep Depository Custody',
     },
-    eta: '17/09/26, 14:00 EDT',
-    dispatchedAt: '14 Sep 2026, 08:30 CDT',
-    progress: 55,
-    transportMode: 'Chartered Air-Specie Flight (AV-US-93901)',
-    carrierFlightNumber: 'AV-US-93901 / SPECIE-AIR',
-    custodyOfficer: 'Chief Flight Marshal D. Miller (ID: #US-AIR-410)',
+    eta: 'Pending Transit Orders',
+    dispatchedAt: 'Awaiting Transit Dispatch',
+    progress: 0,
+    transportMode: 'Depository Vault Custody',
+    carrierFlightNumber: 'PENDING DISPATCH',
+    custodyOfficer: 'Chief Depository Officer H. Weber (ID: #SWISS-VAULT-01)',
     clientCode: user?.clientCode,
-    shipperName: user?.name || 'Linda S Hudson',
-    shipperAddress: 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
-    shipperPhone: '+1 (470) 305-9614',
-    receiverName: 'Chris Bucksath',
-    receiverContact: '+1 (859) 907-3706',
-    receiverAddress: '321 Pimlico Ct Crittenden Ky 41030',
+    shipperName: user?.name || 'Account Depositor',
+    shipperAddress: 'Geneva Freeport Depository Complex',
+    shipperPhone: '',
+    receiverName: 'Pending Transit Assignment',
+    receiverContact: '',
+    receiverAddress: 'Awaiting Destination Orders',
     shippingWeight: '93.9 g',
     checkpoints: [
       {
         id: `cp-auto-1`,
-        timestamp: '14 Sep 2026, 08:30 CDT',
-        title: 'Shipper Handover & Custody Seal Verification',
-        location: 'Hanover Park, IL / Indiana Corridor',
-        facility: 'State: Hanover. Pk. Illinois 1365. Fremont Dr. Zip code :60133.',
+        timestamp: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', 09:00 CET',
+        title: 'Consignment Lodged in Secure Depository Vault',
+        location: 'Geneva Freeport Subterranean Wing',
+        facility: 'Geneva Freeport Deep Depository Tier-IV',
         status: 'completed',
-        officer: 'Agent T. Vance (ID: #AV-CHI-992)',
-        officerId: 'AV-CHI-992',
-        sealId: `SEAL-${user?.clientCode || 'AV'}-A`,
+        officer: 'Senior Depository Officer H. Weber',
+        officerId: 'SWISS-VAULT-01',
+        sealId: `SEAL-${user?.clientCode || 'AV'}-VAULT`,
         hash: 'SHA256:8f43b129a0e41b95b871c890226dfc2d4b1fa3d677284addd200126d9069',
-        notes: `Precious bullion item received from shipper ${user?.name || 'Linda S Hudson'} (+1 470-305-9614). Calibrated weight confirmed at 93.9 g (3.019 ozt). Dual tamper-evident container locked.`,
+        notes: `Precious bullion parcel deposited by ${user?.name || 'account holder'}. Calibrated weight confirmed at 93.9 g (3.019 ozt). Dual tamper-evident vault custody lock engaged.`,
       },
       {
         id: `cp-auto-2`,
-        timestamp: '14 Sep 2026, 11:45 CDT',
-        title: 'Airside Loading & Aircraft Specie Clearance',
-        location: 'Midwest Regional Airside Apron',
-        facility: 'VIP Air Cargo Apron Stand #4',
-        status: 'completed',
-        officer: 'Flight Security Lead K. Bennett',
-        officerId: 'AV-AIR-301',
-        sealId: `SEAL-${user?.clientCode || 'AV'}-B`,
-        notes: 'Tamper seal intact. IoT electronic tracking beacon confirmed online. Specie cask locked in pressurized aircraft hold.',
+        timestamp: 'Pending Authorization',
+        title: 'Subterranean Staging & Dual-Officer Bar Assay Verification',
+        location: 'Depository Staging Sector',
+        facility: 'Pre-Transit Security Staging Vault',
+        status: 'current',
+        officer: 'Assay Officer & Security Escort Detail',
+        officerId: 'AV-STAGING-02',
+        sealId: `AES-${user?.clientCode || 'AV'}-STAGED`,
+        notes: 'Consignment held in static depository custody awaiting client dispatch instructions or routing assignment.',
       },
       {
         id: `cp-auto-3`,
-        timestamp: '15 Sep 2026, 02:15 EDT',
-        title: 'Airborne In-Flight Corridor Transit (FL280)',
-        location: 'Midwest Regional Airspace',
-        facility: 'Flight AV-SPECIE (Cruising FL280)',
-        status: 'current',
-        officer: 'Captain R. Vance & Marshal D. Miller',
-        officerId: 'US-AIR-410',
-        sealId: `AES-${user?.clientCode || 'AV'}-ACTIVE`,
-        notes: 'Aircraft cruising at FL280 with active radar downlink. All environmental sensors nominal.',
+        timestamp: 'Awaiting Transit Orders',
+        title: 'Airside Transfer & Specie Convoy Dispatch',
+        location: 'Corridor Transit Sector',
+        facility: 'Pending Transit Corridor Assignment',
+        status: 'pending',
+        officer: 'Specie Escort Detail',
+        officerId: 'PENDING-DISPATCH',
+        notes: 'Air-specie or armored carrier flight plan will be generated once transit movement is scheduled.',
       },
       {
         id: `cp-auto-4`,
-        timestamp: '17 Sep 2026, 14:00 EDT (17/09/26)',
-        title: 'CVG Airside Reception & Final Handover',
-        location: 'Destination Sector ➔ Doorstep',
-        facility: '321 Pimlico Ct, Crittenden, KY 41030',
+        timestamp: 'Pending Handover',
+        title: 'Final Handover & Biometric Acceptance',
+        location: 'Receiving Sector',
+        facility: 'Pending Recipient Facility',
         status: 'pending',
-        officer: 'Designated Receiver: Chris Bucksath (+1 859-907-3706)',
+        officer: 'Designated Authorized Consignee',
         officerId: 'PENDING-VERIFICATION',
-        notes: 'Dual photographic identification & biometric PIN signature required from receiver Chris Bucksath upon physical delivery handover.',
+        notes: 'Physical handover verification and biometric seal audit upon final delivery.',
       },
     ],
     telemetry: {
       electronicSeal: {
-        id: `AES-${user?.clientCode || 'AV'}-ACTIVE`,
+        id: `AES-${user?.clientCode || 'AV'}-STAGED`,
         status: 'SECURE',
-        battery: '99.4%',
-        lastPing: '2 mins ago',
+        battery: '99.8%',
+        lastPing: 'Just now',
       },
-      gForce: { current: 1.01, maxRecorded: 1.15, threshold: 3.5, unit: 'G' },
+      gForce: { current: 1.00, maxRecorded: 1.05, threshold: 3.5, unit: 'G' },
       lightExposure: { current: 0, status: 'SEALED_VAULT', unit: 'lux' },
-      temperature: { current: 21.2, min: 19.5, max: 22.8, unit: '°C' },
+      temperature: { current: 20.5, min: 19.5, max: 21.5, unit: '°C' },
       gps: {
-        lat: 39.1031,
-        lng: -84.5120,
-        altitude: '28,000 ft',
-        speed: '440 knots',
+        lat: 46.2044,
+        lng: 6.1432,
+        altitude: '0 ft (Subterranean Vault)',
+        speed: '0 kts (Stationary)',
         satellites: 14,
         signalStrength: '99%',
-        geofenceStatus: 'CORRIDOR_COMPLIANT',
+        geofenceStatus: 'VAULT_SECURED',
       },
       escort: {
-        code: 'ESC-US-410',
-        unit: 'AurumVault Armed Air-Specie Courier Detail',
-        protocol: 'Lloyd’s of London Air-Specie Protection Protocol Tier-II',
+        code: 'ESC-SWISS-01',
+        unit: 'AurumVault Subterranean Vault Custody Detail',
+        protocol: 'Lloyd’s of London Depository Vault Protocol Tier-IV',
       },
     },
     manifest: {
-      itemType: 'Precious Air-Specie Consignment',
-      description: `Chartered Gold Specie Flight Package (Shipper: ${user?.name || 'Linda S Hudson'}, Receiver: Chris Bucksath)`,
+      itemType: 'Allocated Specie Holding (Depository Staging)',
+      description: `Allocated Gold Bullion Parcel (Depository Staging: ${user?.name || 'Client'})`,
       grossWeight: '93.9 g (3.019 ozt)',
       netFineWeight: '93.9 g Fine Specie',
       fineness: '999.9 / 1000 Au',
-      sealNumber: `SEAL-${user?.clientCode || 'AV'}-A`,
+      sealNumber: `SEAL-${user?.clientCode || 'AV'}-VAULT`,
       assayLab: 'Swiss Precious Metals & Assayer Certification',
       assayCertNumber: `ASSAY-${user?.clientCode || 'AV'}`,
-      declaredValue: '$16,355.00 USD',
+      declaredValue: '$0.00 USD',
       underwriter: 'Lloyd’s of London Specie Syndicate #33',
       policyNumber: `LL-SPEC-${user?.clientCode || 'AV'}`,
-      securityTier: 'TIER-II DUAL CUSTODY CHARTERED AIR-SPECIE TRANSIT',
+      securityTier: 'TIER-IV SUBTERRANEAN STATIC VAULT CUSTODY',
     },
   }
 
@@ -290,9 +289,9 @@ export function ClientDashboard() {
   const consignmentVal = parseDeclaredValue(activeConsignment.manifest?.declaredValue)
   const clientHoldingsSum = clientHoldings.reduce((sum, h) => sum + (h.declaredValueUSD || 0), 0)
 
-  const grandTotalValueUSD = consignmentVal > 0
+  const grandTotalValueUSD = activeConsignment?.manifest?.declaredValue !== undefined
     ? consignmentVal
-    : (clientHoldingsSum > 0 ? clientHoldingsSum : 16355)
+    : (clientHoldingsSum > 0 ? clientHoldingsSum : 0)
 
   const userFallbackHolding: VaultHolding = {
     id: `VH-${user?.clientCode?.replace(/[^A-Z0-9]/gi, '') || 'SECURE'}-01`,
@@ -791,12 +790,25 @@ export function ClientDashboard() {
                           {activeConsignment.trackingNumber}
                         </span>
                       </div>
-                      <h3 className="font-serif text-xl sm:text-2xl font-bold text-white">
-                        {activeConsignment.origin.city} ({activeConsignment.origin.code}) → {activeConsignment.destination.city} ({activeConsignment.destination.code})
-                      </h3>
-                      <p className="text-xs text-gray-300 mt-1 font-mono">
-                        Flight {activeConsignment.carrierFlightNumber || 'AV-US-93901'} • Senior Escort {activeConsignment.custodyOfficer.split('(')[0].trim()} • ETA: {activeConsignment.eta}
-                      </p>
+                      {(() => {
+                        const isStagedNow = activeConsignment.statusType === 'staging' || activeConsignment.status?.toLowerCase().includes('staging')
+                        const isDestinationPending = activeConsignment.destination.city.toLowerCase().includes('pending')
+
+                        return (
+                          <>
+                            <h3 className="font-serif text-xl sm:text-2xl font-bold text-white">
+                              {isStagedNow && isDestinationPending
+                                ? `${activeConsignment.origin.city} (${activeConsignment.origin.code}) • Subterranean Vault Custody`
+                                : `${activeConsignment.origin.city} (${activeConsignment.origin.code}) → ${activeConsignment.destination.city} (${activeConsignment.destination.code})`}
+                            </h3>
+                            <p className="text-xs text-gray-300 mt-1 font-mono">
+                              {isStagedNow
+                                ? `Protocol: Subterranean Vault Lodgement • Custody: ${activeConsignment.custodyOfficer.split('(')[0].trim()} • Status: Staged in Vault`
+                                : `Flight ${activeConsignment.carrierFlightNumber || 'AV-US-93901'} • Senior Escort ${activeConsignment.custodyOfficer.split('(')[0].trim()} • ETA: ${activeConsignment.eta}`}
+                            </p>
+                          </>
+                        )
+                      })()}
                     </div>
 
                     <button
@@ -811,11 +823,20 @@ export function ClientDashboard() {
 
                   {/* Visual Timeline Progress */}
                   <div className="mt-6">
-                    <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
-                      <span>Origin: {activeConsignment.origin.facility}</span>
-                      <span className="text-[#dfba6c] font-bold">{activeConsignment.progress}% Handover Progress</span>
-                      <span>Dest: {activeConsignment.destination.facility}</span>
-                    </div>
+                    {(() => {
+                      const isStagedNow = activeConsignment.statusType === 'staging' || activeConsignment.status?.toLowerCase().includes('staging')
+                      return (
+                        <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
+                          <span>Origin: {activeConsignment.origin.facility}</span>
+                          <span className="text-[#dfba6c] font-bold">
+                            {isStagedNow && activeConsignment.progress === 0
+                              ? 'Lodged in Vault (0% In Transit)'
+                              : `${activeConsignment.progress}% Handover Progress`}
+                          </span>
+                          <span>Dest: {activeConsignment.destination.city.toLowerCase().includes('pending') ? 'Awaiting Dispatch Orders' : activeConsignment.destination.facility}</span>
+                        </div>
+                      )
+                    })()}
                     <div className="h-2.5 w-full rounded-full bg-[#1e2330] overflow-hidden p-0.5">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-[#dfba6c] to-[#c29b43] transition-all duration-700 shadow-sm"
@@ -1506,7 +1527,7 @@ export function ClientDashboard() {
 
       {/* Sovereign Client Notice Modal */}
       {(() => {
-        let recipient = activeConsignment.receiverName || user?.name || 'Chris Bucksath'
+        let recipient = activeConsignment.receiverName || user?.name || 'Authorized Consignee'
         if (!activeConsignment.receiverName && activeConsignment?.destination?.facility && activeConsignment.destination.facility.includes('Receiver:')) {
           const match = activeConsignment.destination.facility.match(/Receiver:\s*([^,)]+)/i)
           if (match && match[1]) recipient = match[1].trim()

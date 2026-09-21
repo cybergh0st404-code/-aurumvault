@@ -162,7 +162,7 @@ export async function syncClientVaultHoldings(params: {
   const requestedLots = Math.max(1, Number(params.lotCount) || 1)
   const totalWeightOzt = params.goldWeight !== undefined ? parseWeightToOzt(params.goldWeight) : 3.019
   const totalWeightKg = oztToKg(totalWeightOzt)
-  const totalValueUSD = params.declaredValueUSD !== undefined ? Number(params.declaredValueUSD) : 16355
+  const totalValueUSD = params.declaredValueUSD !== undefined ? Number(params.declaredValueUSD) : 0
 
   const vaultFacility = params.vaultFacility || 'Geneva Freeport Deep Depository Tier-IV'
   const vaultCity = vaultFacility.includes('Zurich')
