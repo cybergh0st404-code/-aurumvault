@@ -10,9 +10,8 @@ const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono'
 const dmSerif = DM_Serif_Display({ subsets: ['latin'], weight: '400', variable: '--font-dm-serif' })
 
 export const metadata: Metadata = {
-  title: 'AurumVault — Precision logistics for valuable assets',
-  description: 'Private, controlled logistics for precious metals, fine jewellery, and high-value assets.',
-  generator: 'v0.app',
+  title: 'AurumVault — Sovereign Specie Depository & Custody',
+  description: 'Confidential client authentication and custody tracking for allocated Swiss vault depositors.',
 }
 
 export const viewport: Viewport = { colorScheme: 'light', themeColor: '#f9f8f3' }

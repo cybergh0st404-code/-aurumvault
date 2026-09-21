@@ -282,6 +282,8 @@ export function AdminCommandCenter() {
   const [newUserClientCode, setNewUserClientCode] = useState('')
   const [newUserOrg, setNewUserOrg] = useState('')
   const [newUserClearance, setNewUserClearance] = useState('')
+  const [isCreatingUser, setIsCreatingUser] = useState(false)
+  const [justCommittedSuccess, setJustCommittedSuccess] = useState(false)
 
   const fetchUsers = async () => {
     setIsLoadingUsers(true)
@@ -307,6 +309,11 @@ export function AdminCommandCenter() {
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setUserActionFeedback(null)
+    setIsCreatingUser(true)
+    const targetName = newUserName
+    const targetEmail = newUserEmail
+    const targetRole = newUserRole
+
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
@@ -350,7 +357,8 @@ export function AdminCommandCenter() {
       })
       const data = await res.json()
       if (data.success) {
-        setUserActionFeedback('✓ New user credentials, dedicated consignment, and vaulted holdings committed to SQLite!')
+        setJustCommittedSuccess(true)
+        setUserActionFeedback(`✓ Successfully enrolled "${targetName}" (${targetEmail})! Account credentials, ${targetRole === 'client' ? 'vault staging consignment ($0.00 USD), and allocated holding' : 'admin security clearance'} committed to SQLite database.`)
         setNewUserName('')
         setNewUserEmail('')
         setNewUserPassword('')
@@ -377,12 +385,15 @@ export function AdminCommandCenter() {
         if (refreshVaultHoldingsFromServer) {
           refreshVaultHoldingsFromServer()
         }
-        setTimeout(() => setUserActionFeedback(null), 5000)
+        setTimeout(() => setJustCommittedSuccess(false), 5000)
+        setTimeout(() => setUserActionFeedback(null), 8000)
       } else {
         setUserActionFeedback(`Error: ${data.error || 'Failed to create user'}`)
       }
     } catch (err) {
       setUserActionFeedback('Error: Gateway connection failure')
+    } finally {
+      setIsCreatingUser(false)
     }
   }
 
@@ -2948,12 +2959,56 @@ export function AdminCommandCenter() {
                     </div>
                   )}
 
+                  {/* Immediate Feedback Alert Box directly above submit button */}
+                  {userActionFeedback && (
+                    <div
+                      className={`rounded-2xl p-4 text-xs font-mono font-semibold flex items-start gap-3 border shadow-xl transition-all duration-300 ${
+                        userActionFeedback.startsWith('✓')
+                          ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40 shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+                          : 'bg-red-500/15 text-red-200 border-red-500/40 shadow-red-500/10 ring-1 ring-red-500/30'
+                      }`}
+                    >
+                      {userActionFeedback.startsWith('✓') ? (
+                        <CheckCircle2 size={20} className="text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle size={20} className="text-red-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-white">
+                          {userActionFeedback.startsWith('✓') ? 'Database Record Committed Successfully' : 'Submission Alert'}
+                        </p>
+                        <p className="mt-1 leading-relaxed opacity-90">{userActionFeedback}</p>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] py-3.5 text-xs font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 flex items-center justify-center gap-2 mt-3"
+                    disabled={isCreatingUser}
+                    className={`w-full rounded-xl py-3.5 text-xs font-bold transition shadow-lg flex items-center justify-center gap-2 mt-3 ${
+                      isCreatingUser
+                        ? 'bg-amber-500/25 text-amber-200 border border-amber-500/40 cursor-wait'
+                        : justCommittedSuccess
+                        ? 'bg-emerald-500 text-black shadow-emerald-500/25 cursor-default'
+                        : 'bg-gradient-to-r from-[#dfba6c] to-[#c29b43] text-black hover:opacity-95 shadow-[#c29b43]/20'
+                    }`}
                   >
-                    <ShieldCheck size={16} />
-                    <span>Commit Credentials to SQLite Database</span>
+                    {isCreatingUser ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin text-amber-300" />
+                        <span>Committing Credentials &amp; Vault Staging to SQLite...</span>
+                      </>
+                    ) : justCommittedSuccess ? (
+                      <>
+                        <CheckCircle2 size={16} className="text-black" />
+                        <span>✓ Successfully Committed to SQLite Database!</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={16} />
+                        <span>Commit Credentials to SQLite Database</span>
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
@@ -3663,6 +3718,43 @@ export function AdminCommandCenter() {
             }
           }}
         />
+      )}
+
+      {/* Global Floating Toast Alert for SQLite Operations */}
+      {userActionFeedback && (
+        <div className="fixed bottom-6 right-6 z-[100] max-w-md animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-auto">
+          <div
+            className={`rounded-2xl p-4 text-xs font-mono font-semibold shadow-2xl border backdrop-blur-md flex items-start gap-3.5 ${
+              userActionFeedback.startsWith('✓')
+                ? 'bg-[#0b1b13]/95 border-emerald-500/60 text-emerald-200 shadow-emerald-950/60 ring-1 ring-emerald-500/40'
+                : 'bg-[#210c10]/95 border-red-500/60 text-red-200 shadow-red-950/60 ring-1 ring-red-500/40'
+            }`}
+          >
+            <div className={`p-2 rounded-xl shrink-0 ${userActionFeedback.startsWith('✓') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+              {userActionFeedback.startsWith('✓') ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+            </div>
+            <div className="flex-1 min-w-0 pr-1">
+              <p className="font-bold text-sm text-white">
+                {userActionFeedback.startsWith('✓') ? 'Database Transaction Complete' : 'System Notice'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed opacity-95">{userActionFeedback}</p>
+              {userActionFeedback.startsWith('✓') && (
+                <div className="mt-2 text-[10px] text-emerald-400 font-mono font-bold flex items-center gap-1.5">
+                  <span className="inline-block size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Synced with SQLite DB &bull; Active client roster updated
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setUserActionFeedback(null)}
+              className="text-gray-400 hover:text-white p-1 transition"
+              title="Dismiss Notification"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

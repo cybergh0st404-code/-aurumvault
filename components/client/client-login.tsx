@@ -39,14 +39,21 @@ export function ClientLogin({ onSuccess }: ClientLoginProps) {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#dfba6c]/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="mx-auto max-w-5xl w-full relative z-10">
-        {/* Top Banner / Breadcrumb */}
+        {/* Top Banner: Sovereign Brand & Hardware Enclave */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-gray-400 hover:text-white transition"
-          >
-            ← Return to Public Radar
-          </Link>
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-[#dfba6c] to-[#916e25] text-black shadow-md shadow-[#c29b43]/20">
+              <Sparkles size={17} />
+            </span>
+            <div className="flex flex-col">
+              <span className="font-serif text-lg font-bold tracking-tight text-white leading-tight">
+                Aurum<span className="text-[#dfba6c]">Vault</span>
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.25em] text-gray-400 font-mono -mt-0.5">
+                Sovereign Specie Custody &bull; Geneva
+              </span>
+            </div>
+          </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-[#dfba6c]/30 bg-[#dfba6c]/10 px-3.5 py-1.5 text-xs font-mono font-bold text-[#dfba6c] self-start sm:self-auto">
             <ShieldCheck size={14} />
             <span>FIPS 140-3 Hardware Enclave Active</span>

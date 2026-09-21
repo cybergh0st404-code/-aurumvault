@@ -153,13 +153,6 @@ function Header() {
                 <Key size={13} className="text-primary" />
                 Client Vault
               </Link>
-              <Link
-                href="/admin"
-                className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition px-2.5 py-2"
-              >
-                <LockKeyhole size={13} className="text-primary" />
-                HQ Ops
-              </Link>
             </>
           )}
 
@@ -218,18 +211,10 @@ function Header() {
                   <Link
                     href="/portal"
                     onClick={() => setOpen(false)}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card py-2 text-xs font-semibold text-foreground hover:bg-muted"
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card py-2 text-xs font-semibold text-foreground hover:bg-muted w-full"
                   >
                     <Key size={13} className="text-primary" />
                     Client Vault
-                  </Link>
-                  <Link
-                    href="/admin"
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card py-2 text-xs font-semibold text-foreground hover:bg-muted"
-                  >
-                    <LockKeyhole size={13} className="text-primary" />
-                    HQ Ops
                   </Link>
                 </div>
               )}
@@ -877,13 +862,6 @@ function Footer() {
               {label}
             </Link>
           ))}
-          <Link
-            href="/admin"
-            className="mt-4 inline-flex items-center gap-1.5 text-xs text-primary font-mono hover:underline"
-          >
-            <LockKeyhole size={12} />
-            Operations Command Desk
-          </Link>
         </div>
 
         <div>
@@ -912,41 +890,64 @@ export default function LogisticsSite() {
   const pathname = usePathname()
   const { user } = useAuth()
   const slug = pathname.split('/').filter(Boolean).pop() || ''
+  const ADMIN_SECRET_PATH = '/ops-custody-command-782'
 
-  // 1. Client Depository Portal -> Dedicated Full-Screen Shell
-  if (pathname.startsWith('/portal')) {
-    if (slug === 'login' || !user || user.role === 'admin') {
-      return <ClientLogin />
-    }
-    return <ClientDashboard />
-  }
-
-  // 2. Admin Command Center -> Dedicated Full-Screen Operations Shell with Level-V Security Gate
-  if (slug === 'admin' || pathname.startsWith('/admin')) {
+  // 1. Dedicated Secret Admin Entry Route (Level-V Security Gateway)
+  if (pathname === ADMIN_SECRET_PATH || pathname.startsWith(ADMIN_SECRET_PATH)) {
     return <AdminCommandCenter />
   }
 
-  // 3. Public Marketing Website Pages
-  let content: React.ReactNode = <Home />
-
-  if (slug === 'tracking') {
-    content = <TrackingDashboard />
-  } else if (slug === 'quote') {
-    content = <QuoteCalculator />
-  } else if (slug === 'faq') {
-    content = <FAQ />
-  } else if (slug && slug !== '') {
-    content = <Generic slug={slug} />
+  // 2. Protected /admin Route -> Strict 404 Masking for unauthenticated/client visitors
+  if (slug === 'admin' || pathname.startsWith('/admin')) {
+    if (user?.role === 'admin') {
+      return <AdminCommandCenter />
+    }
+    // Genuine standard 404 presentation with zero admin hints
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white text-black dark:bg-[#000] dark:text-[#fff] px-4 font-sans select-none">
+        <div className="flex items-center space-x-5">
+          <h1 className="text-2xl font-semibold border-r border-gray-300 dark:border-gray-700 pr-5 py-2 tracking-tight">
+            404
+          </h1>
+          <p className="text-sm text-gray-700 dark:text-gray-300 font-normal">
+            This page could not be found.
+          </p>
+        </div>
+      </div>
+    )
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
-      <MarketTicker />
-      <Header />
-      <div className="flex-1">{content}</div>
-      <Footer />
-    </div>
-  )
+  // 3. Dedicated Tracking Tool (if accessed directly via /tracking)
+  if (slug === 'tracking' || pathname.startsWith('/tracking')) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#0a0c10] text-[#f4f4f6] font-sans">
+        <div className="border-b border-[#242833] bg-[#0e1117] px-4 sm:px-6 py-3 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-xs font-mono text-gray-400 hover:text-white transition">
+            ← Return to Depository Login
+          </Link>
+          <span className="text-xs font-mono text-[#dfba6c] font-bold">AurumVault Live Specie Transponder</span>
+        </div>
+        <div className="flex-1">
+          <TrackingDashboard />
+        </div>
+      </div>
+    )
+  }
+
+  // 4. Default Application Entry (Root / and /portal)
+  // The marketing landing page is fully disconnected.
+  // - Unauthenticated visitors immediately see the Private Client Depository Login.
+  // - Authenticated clients see their allocated dashboard.
+  // - Authenticated admins see the operations command center.
+  if (user?.role === 'admin') {
+    return <AdminCommandCenter />
+  }
+
+  if (user?.role === 'client') {
+    return <ClientDashboard />
+  }
+
+  return <ClientLogin />
 }
 
 
