@@ -664,6 +664,7 @@ export async function updateShipmentDetails(
   if (!statusType && updates.status) {
     const sLower = updates.status.toLowerCase()
     if (sLower.includes('deliver')) statusType = 'delivered'
+    else if (sLower.includes('touchdown') || sLower.includes('destination holding') || sLower.includes('pending consignee') || sLower.includes('pending acceptance')) statusType = 'destination-holding'
     else if (sLower.includes('custom')) statusType = 'customs'
     else if (sLower.includes('staging')) statusType = 'staging'
     else if (sLower.includes('transit') || sLower.includes('convoy') || sLower.includes('flight') || sLower.includes('air')) statusType = 'in-flight'

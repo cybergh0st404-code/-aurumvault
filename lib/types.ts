@@ -45,7 +45,7 @@ export interface SensorTelemetry {
     speed: string
     satellites: number
     signalStrength: string
-    geofenceStatus: 'CORRIDOR_COMPLIANT' | 'DEVIATION_ALERT'
+    geofenceStatus: 'CORRIDOR_COMPLIANT' | 'DEVIATION_ALERT' | 'VAULT_SECURED'
   }
   escort: {
     code: string
@@ -85,7 +85,7 @@ export interface Shipment {
   id: string
   trackingNumber: string
   status: string
-  statusType: 'in-flight' | 'customs' | 'delivered' | 'staging'
+  statusType: 'in-flight' | 'customs' | 'delivered' | 'staging' | 'destination-holding'
   category: string
   origin: {
     city: string
@@ -198,6 +198,7 @@ export interface StandardLogisticsStage {
   statusType: Shipment['statusType']
   defaultProgress?: number
   isStaging?: boolean
+  isDestinationHolding?: boolean
   description: string
 }
 
@@ -255,6 +256,16 @@ export const STANDARD_LOGISTICS_STAGES: StandardLogisticsStage[] = [
     statusType: 'customs',
     defaultProgress: 85,
     description: 'Diplomatic port of entry customs inspection and electronic seal audit',
+  },
+  {
+    id: 'stage_destination_arrival_holding',
+    name: 'Airside Touchdown & Destination Holding — Pending Consignee Acceptance',
+    shortLabel: '★ Destination Airside Hold',
+    statusText: 'Arrived at Destination — Pending Consignee Acceptance',
+    statusType: 'destination-holding',
+    defaultProgress: 100,
+    isDestinationHolding: true,
+    description: 'Chartered flight landed at destination airside. Gold secured in airport vault awaiting receiver handover.',
   },
   {
     id: 'stage_final_lodgement',

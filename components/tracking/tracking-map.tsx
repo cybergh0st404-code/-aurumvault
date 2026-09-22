@@ -53,10 +53,17 @@ export function TrackingMap({
   const statusType = shipment.statusType
 
   const isDelivered = statusType === 'delivered' || statusLower.includes('deliver')
+  const isDestinationHolding =
+    statusType === 'destination-holding' ||
+    statusLower.includes('touchdown') ||
+    statusLower.includes('destination holding') ||
+    statusLower.includes('pending consignee') ||
+    statusLower.includes('pending acceptance') ||
+    (Number(shipment.progress) >= 100 && !isDelivered)
   const isCustoms = statusType === 'customs' || statusLower.includes('custom')
   const isStaged = statusType === 'staging' || statusLower.includes('staging')
   const isConvoy = statusLower.includes('convoy') || statusLower.includes('ground') || statusLower.includes('armored')
-  const isAirborne = !isDelivered && !isCustoms && !isStaged && !isConvoy
+  const isAirborne = !isDelivered && !isDestinationHolding && !isCustoms && !isStaged && !isConvoy
 
   // Check for active intermediate staging waypoint
   const hasIntermediateStop = Boolean(
@@ -66,7 +73,7 @@ export function TrackingMap({
 
   // Calculate target progress from operational stage
   const getTargetProgress = (): number => {
-    if (isDelivered) return 1.0
+    if (isDelivered || isDestinationHolding) return 1.0
     if (isCustoms) return Math.max(0.85, (shipment.progress ?? 85) / 100)
     if (isStaged) {
       if (hasIntermediateStop || (shipment.progress && shipment.progress > 20)) {
@@ -85,7 +92,7 @@ export function TrackingMap({
   // Synchronize progress immediately when external shipment updates or stage changes
   useEffect(() => {
     setProgress(getTargetProgress())
-  }, [shipment.progress, shipment.id, shipment.status, isDelivered, isCustoms, isStaged, isConvoy, hasIntermediateStop])
+  }, [shipment.progress, shipment.id, shipment.status, isDelivered, isDestinationHolding, isCustoms, isStaged, isConvoy, hasIntermediateStop])
 
   useEffect(() => {
     if (shipment.isPaused !== undefined) {
@@ -105,7 +112,7 @@ export function TrackingMap({
   useEffect(() => {
     // When paused or when static stages are active:
     // Keep vehicle anchored strictly at its authentic progress location!
-    if (!isPlaying || isDelivered || isStaged || isCustoms) {
+    if (!isPlaying || isDelivered || isDestinationHolding || isStaged || isCustoms) {
       lastTimeRef.current = null
       return
     }
@@ -125,8 +132,9 @@ export function TrackingMap({
 
       setProgress(prev => {
         let next = prev + speedRate
-        if (next >= 0.98) {
-          next = 0.05
+        if (next >= 1.0) {
+          // Touchdown at destination! Do not restart or loop back to 0.05.
+          return 1.0
         }
         return next
       })
@@ -136,7 +144,7 @@ export function TrackingMap({
 
     animationFrameId = requestAnimationFrame(step)
     return () => cancelAnimationFrame(animationFrameId)
-  }, [isPlaying, speedMultiplier, isDelivered, isStaged, isCustoms])
+  }, [isPlaying, speedMultiplier, isDelivered, isDestinationHolding, isStaged, isCustoms])
 
   // Periodic sensor telemetry jitter for realistic avionics / transponder ping
   useEffect(() => {
@@ -230,7 +238,7 @@ export function TrackingMap({
     badgeColor: 'text-[#dfba6c] bg-[#dfba6c]/15 border-[#dfba6c]/30',
     altitude: '28,000 ft (Cruising FL280)',
     speed: `${440 + telemetryJitter.spdJitter} kts (Chartered Flight)`,
-    iconType: 'plane' as 'plane' | 'convoy' | 'staging' | 'customs' | 'delivered',
+    iconType: 'plane' as 'plane' | 'convoy' | 'staging' | 'customs' | 'delivered' | 'destination-holding',
     nodeColor: 'from-[#dfba6c] to-[#c29b43]',
     shadowGlow: '#c29b43',
     calloutTitle: `${shipment.carrierFlightNumber || 'AV-US-93901'} • ${Math.round(progress * 100)}% Traversed`,
@@ -252,6 +260,21 @@ export function TrackingMap({
       calloutTitle: 'Handover Complete • 100% Delivered',
       calloutSubtitle: `Receiver: ${shipment.receiverName || 'Designated Receiver'} (Biometric PIN Verified)`,
       surveillanceText: 'Mission Complete: Verified Handover & Custody Signature Confirmed',
+    }
+  } else if (isDestinationHolding) {
+    stageConfig = {
+      modeTitle: 'AIRSIDE TOUCHDOWN & DESTINATION HOLDING — PENDING ACCEPTANCE',
+      modeSubtitle: 'Chartered flight landed. Consignment secured in destination airside vault awaiting consignee biometric handover',
+      statusBadge: 'ARRIVED AT DESTINATION • PENDING HANDOVER',
+      badgeColor: 'text-amber-300 bg-amber-500/15 border-amber-500/30',
+      altitude: '0 ft (Destination Airside Vault / Tarmac)',
+      speed: '0 kts (Stationary • Touchdown Confirmed)',
+      iconType: 'destination-holding',
+      nodeColor: 'from-amber-400 via-[#dfba6c] to-emerald-500',
+      shadowGlow: '#dfba6c',
+      calloutTitle: 'Touchdown Confirmed • 100% Landed',
+      calloutSubtitle: `${shipment.destination.facility || shipment.destination.city} • Awaiting Consignee Acceptance`,
+      surveillanceText: 'Airside Arrival: Consignment Secured in Destination Depository Vault (Awaiting Biometric Release)',
     }
   } else if (isCustoms) {
     stageConfig = {
@@ -338,7 +361,7 @@ export function TrackingMap({
   }
 
   // If paused during transit, display clear Command Standby status
-  if (!isPlaying && !isDelivered && !isStaged && !isCustoms) {
+  if (!isPlaying && !isDelivered && !isDestinationHolding && !isStaged && !isCustoms) {
     stageConfig.statusBadge = 'RADAR STANDBY (TRANSIT PAUSED)'
     stageConfig.badgeColor = 'text-amber-300 bg-amber-500/15 border-amber-500/30'
     stageConfig.speed = '0 kts (Command Hold Standby)'
@@ -582,6 +605,8 @@ export function TrackingMap({
                 >
                   {stageConfig.iconType === 'delivered' ? (
                     <CheckCircle2 size={24} className="text-white drop-shadow" />
+                  ) : stageConfig.iconType === 'destination-holding' ? (
+                    <Building2 size={24} className="text-black drop-shadow" />
                   ) : stageConfig.iconType === 'customs' ? (
                     <ShieldCheck size={24} className="text-white drop-shadow" />
                   ) : stageConfig.iconType === 'convoy' ? (
@@ -618,6 +643,8 @@ export function TrackingMap({
                   className={`size-4 rounded-full block ${
                     isDelivered
                       ? 'size-5 bg-emerald-400 shadow-[0_0_25px_#10b981] ring-4 ring-emerald-500/30 animate-pulse'
+                      : isDestinationHolding
+                      ? 'size-5 bg-[#dfba6c] shadow-[0_0_25px_#c29b43] ring-4 ring-[#dfba6c]/40 animate-pulse'
                       : isCustoms
                       ? 'size-5 bg-amber-400 shadow-[0_0_20px_#f59e0b] ring-4 ring-amber-500/30 animate-pulse'
                       : progress >= 0.98
@@ -628,13 +655,16 @@ export function TrackingMap({
                 {isDelivered && (
                   <span className="absolute -inset-2 rounded-full border-2 border-emerald-400/80 animate-ping-slow" />
                 )}
+                {isDestinationHolding && (
+                  <span className="absolute -inset-2 rounded-full border-2 border-[#dfba6c]/80 animate-ping-slow" />
+                )}
                 {isCustoms && (
                   <span className="absolute -inset-1.5 rounded-full border border-amber-400/80 animate-ping-slow" />
                 )}
               </div>
               <div className="mt-3">
                 <div className="flex items-center justify-end gap-1 font-mono text-xs font-bold text-background">
-                  <span className={`size-1.5 rounded-full ${isDelivered ? 'bg-emerald-400' : 'bg-primary'}`} />
+                  <span className={`size-1.5 rounded-full ${isDelivered ? 'bg-emerald-400' : isDestinationHolding ? 'bg-[#dfba6c]' : 'bg-primary'}`} />
                   <span>{shipment.destination.code}</span>
                 </div>
                 <p className="text-[11px] text-background/90 font-medium">{shipment.destination.city}</p>
@@ -642,6 +672,11 @@ export function TrackingMap({
                 {isDelivered && (
                   <span className="mt-0.5 inline-block text-[9px] font-mono font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/30">
                     ✓ HANDOVER COMPLETE
+                  </span>
+                )}
+                {isDestinationHolding && (
+                  <span className="mt-0.5 inline-block text-[9px] font-mono font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                    ● AIRSIDE TOUCHDOWN (AWAITING RECEIVER)
                   </span>
                 )}
                 {isCustoms && (

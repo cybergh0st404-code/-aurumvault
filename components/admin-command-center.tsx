@@ -797,12 +797,15 @@ export function AdminCommandCenter() {
         ? customStatusType
         : (standardStage?.statusType || 'in-flight')
 
+      const isDestinationHolding = statusType === 'destination-holding' || Boolean(standardStage?.isDestinationHolding)
       const isStagingMode = statusType === 'staging' || Boolean(standardStage?.isStaging)
       const isInterimStaging = isStagingMode && (selectedStageId === 'stage_interim_staging' || selectedStageId === 'stage_transit_audit' || isCustomStage)
 
       // Calculate progress
       let newProgress: number
-      if (progressMode === 'maintain') {
+      if (isDestinationHolding) {
+        newProgress = progressMode === 'override' ? overrideProgress : 100
+      } else if (progressMode === 'maintain') {
         newProgress = activeShipment.progress
       } else {
         newProgress = overrideProgress
@@ -810,7 +813,7 @@ export function AdminCommandCenter() {
 
       // Build intermediateStop if interim staging
       let newIntermediateStop: IntermediateStop | null = null
-      if (isInterimStaging) {
+      if (isInterimStaging && !isDestinationHolding) {
         if (isCustomLocation) {
           newIntermediateStop = {
             facility: customFacilityName.trim() || 'Custom Staging Depository',
@@ -851,31 +854,33 @@ export function AdminCommandCenter() {
       if (recordLedgerMilestone) {
         const milestoneFacility = newIntermediateStop
           ? newIntermediateStop.facility
-          : (statusType === 'delivered' ? activeShipment.destination.facility : activeShipment.origin.facility)
+          : ((statusType === 'delivered' || isDestinationHolding) ? activeShipment.destination.facility : activeShipment.origin.facility)
         const milestoneCity = newIntermediateStop
           ? `${newIntermediateStop.city}, ${newIntermediateStop.country || ''}`
-          : (statusType === 'delivered' ? activeShipment.destination.city : activeShipment.origin.city)
+          : ((statusType === 'delivered' || isDestinationHolding) ? `${activeShipment.destination.city}, ${activeShipment.destination.country || ''}` : activeShipment.origin.city)
 
         const newCp: Checkpoint = {
           id: `cp-stage-${Date.now()}`,
           timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-          title: `Mission Lifecycle: ${stageName}`,
+          title: isDestinationHolding ? 'Airside Touchdown & Destination Holding' : `Mission Lifecycle: ${stageName}`,
           location: milestoneCity,
           facility: milestoneFacility,
-          status: 'current',
+          status: isDestinationHolding ? 'current' : (statusType === 'delivered' ? 'completed' : 'current'),
           officer: activeShipment.custodyOfficer,
           officerId: 'AV-OPS-COMMAND',
           sealId: activeShipment.telemetry.electronicSeal.id,
           hash: `SHA256:${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
-          notes: newIntermediateStop
+          notes: isDestinationHolding
+            ? `Flight corridor concluded. Consignment safely touched down at ${milestoneFacility} (100% transit completed). Aircraft docked airside; specie transferred to secured destination holding vault. Awaiting final consignee identification & biometric release protocol.`
+            : newIntermediateStop
             ? `Consignment staged at ${newIntermediateStop.facility} (${newIntermediateStop.code}) at ${Math.round(newProgress)}% progress. Radar transponder locked in subterranean vault holding mode.`
             : `Mission stage transitioned to ${stageName}. Velocity and avionics updated to ${statusType} mode at ${Math.round(newProgress)}% progress.`,
         }
         updatedCheckpoints.push(newCp)
       }
 
-      // If staging is applied, pause flight simulation so aircraft docks at waypoint
-      const isPaused = isInterimStaging ? true : activeShipment.isPaused
+      // If staging or destination holding is applied, pause flight simulation so aircraft docks
+      const isPaused = (isInterimStaging || isDestinationHolding) ? true : activeShipment.isPaused
 
       await updateShipmentDetails(activeShipment.id, {
         status: formattedStatus,
@@ -891,6 +896,52 @@ export function AdminCommandCenter() {
     } catch (e) {
       console.error('Failed to apply mission stage:', e)
       setStageFeedbackMsg('Failed to update mission stage. Check network connection.')
+    } finally {
+      setIsApplyingStage(false)
+    }
+  }
+
+  // Final Consignee Handover & Sign Off Delivery
+  const handleFinalHandoverDelivery = async () => {
+    if (!activeShipment) return
+    setIsApplyingStage(true)
+    setStageFeedbackMsg(null)
+
+    try {
+      const destFacility = activeShipment.destination.facility
+      const destCity = `${activeShipment.destination.city}, ${activeShipment.destination.country || ''}`
+      const updatedCheckpoints = [...activeShipment.checkpoints]
+
+      if (recordLedgerMilestone) {
+        updatedCheckpoints.push({
+          id: `cp-delivery-${Date.now()}`,
+          timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          title: 'Final Consignee Handover & Biometric Sign-Off',
+          location: destCity,
+          facility: destFacility,
+          status: 'completed',
+          officer: activeShipment.custodyOfficer,
+          officerId: 'AV-OPS-COMMAND',
+          sealId: activeShipment.telemetry.electronicSeal.id,
+          hash: `SHA256:${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+          notes: `Consignee verification validated. Electronic seals de-energized under dual-custody supervision. Full sovereign custody transfer successfully completed at ${destFacility}.`,
+        })
+      }
+
+      await updateShipmentDetails(activeShipment.id, {
+        status: 'Delivered — Verified Handover Complete',
+        statusType: 'delivered',
+        progress: 100,
+        isPaused: true,
+        intermediateStop: null,
+        checkpoints: updatedCheckpoints,
+      })
+
+      setStageFeedbackMsg('Mission completed! Final delivery and consignee handover signed off.')
+      setTimeout(() => setStageFeedbackMsg(null), 5000)
+    } catch (e) {
+      console.error('Failed to sign off delivery:', e)
+      setStageFeedbackMsg('Failed to complete delivery handover.')
     } finally {
       setIsApplyingStage(false)
     }
@@ -1426,6 +1477,42 @@ export function AdminCommandCenter() {
                         </div>
                       )}
 
+                      {/* Destination Touchdown & Holding Alert Banner (100% progress, awaiting consignee handover) */}
+                      {(activeShipment.statusType === 'destination-holding' ||
+                        (activeShipment.progress >= 100 && activeShipment.statusType !== 'delivered') ||
+                        activeShipment.status?.toLowerCase().includes('pending consignee') ||
+                        activeShipment.status?.toLowerCase().includes('destination holding') ||
+                        activeShipment.status?.toLowerCase().includes('touchdown')) && (
+                        <div className="rounded-xl border border-[#dfba6c]/60 bg-gradient-to-r from-[#dfba6c]/20 via-[#dfba6c]/10 to-amber-950/25 p-4 text-xs text-[#f4f4f6] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-xl bg-[#dfba6c]/25 text-[#dfba6c] shrink-0 border border-[#dfba6c]/40 mt-0.5 shadow">
+                              <Building2 size={18} />
+                            </div>
+                            <div>
+                              <div className="font-bold text-[#dfba6c] font-mono text-xs sm:text-sm flex flex-wrap items-center gap-2">
+                                <span>DESTINATION TOUCHDOWN: HELD IN SECURED AIRSIDE VAULT</span>
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold tracking-wider">
+                                  100% FLIGHT COMPLETE
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-300 mt-1 font-mono leading-relaxed">
+                                Specie flight has concluded at <strong className="text-white">{activeShipment.destination.facility} ({activeShipment.destination.city})</strong>. Gold is staged in depository vault awaiting receiver biometric verification and physical release.
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleFinalHandoverDelivery}
+                            disabled={isApplyingStage}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 hover:brightness-110 text-black px-4 py-2 font-mono text-xs font-bold transition shadow-lg shrink-0 self-start sm:self-auto cursor-pointer"
+                          >
+                            <CheckCircle2 size={14} className="fill-black text-emerald-300" />
+                            <span>Sign Off Final Delivery</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Stage Selector Form */}
                       <div className="space-y-3.5 text-xs">
                         <div>
@@ -1482,12 +1569,14 @@ export function AdminCommandCenter() {
                               <label className="font-mono font-bold text-gray-300 block mb-1">
                                 Operational Stage Persona & Vehicle Behavior
                               </label>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {([
                                   { type: 'staging', label: 'Vault Staging', icon: <Building2 size={13} /> },
+                                  { type: 'destination-holding', label: 'Dest. Holding (100%)', icon: <Building2 size={13} /> },
                                   { type: 'in-flight', label: 'Air Corridor', icon: <Plane size={13} /> },
                                   { type: 'in-flight', label: 'Armored Convoy', icon: <Truck size={13} /> },
                                   { type: 'customs', label: 'Customs Hold', icon: <ShieldCheck size={13} /> },
+                                  { type: 'delivered', label: 'Delivered', icon: <CheckCircle2 size={13} /> },
                                 ] as const).map(item => (
                                   <button
                                     key={item.label}

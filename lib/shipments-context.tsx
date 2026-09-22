@@ -199,6 +199,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
             if (targetStatus) {
               const lower = targetStatus.toLowerCase()
               if (lower.includes('deliver')) derivedStatusType = 'delivered'
+              else if (lower.includes('touchdown') || lower.includes('destination holding') || lower.includes('pending consignee') || lower.includes('pending acceptance')) derivedStatusType = 'destination-holding'
               else if (lower.includes('custom')) derivedStatusType = 'customs'
               else if (lower.includes('staging')) derivedStatusType = 'staging'
               else if (lower.includes('transit') || lower.includes('convoy') || lower.includes('flight') || lower.includes('air')) derivedStatusType = 'in-flight'
@@ -337,11 +338,27 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     const clamped = Math.max(0, Math.min(100, Math.round(newProgress)))
     const updated = shipments.map(s => {
       if (s.id !== id) return s
+
+      let newStatusType = s.statusType
+      let newStatus = s.status
+
+      if (clamped >= 100) {
+        if (s.statusType !== 'delivered') {
+          newStatusType = 'destination-holding'
+          if (!s.status?.toLowerCase().includes('consignee') && !s.status?.toLowerCase().includes('touchdown')) {
+            newStatus = 'Arrived at Destination — Pending Consignee Acceptance'
+          }
+        }
+      } else if (s.statusType === 'destination-holding' || s.statusType === 'delivered') {
+        newStatusType = 'in-flight'
+        newStatus = 'In Transit — Sovereign Air-Specie Corridor'
+      }
+
       return {
         ...s,
         progress: clamped,
-        statusType: clamped >= 100 ? ('delivered' as const) : s.statusType,
-        status: clamped >= 100 ? 'Delivered — Verified Handover' : s.status,
+        statusType: newStatusType,
+        status: newStatus,
       }
     })
     persistShipments(updated)
@@ -357,7 +374,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
   }
 
   const updateShipmentStatus = (id: string, status: string, statusType: Shipment['statusType']) => {
-    const newProgress = statusType === 'delivered' ? 100 : undefined
+    const newProgress = (statusType === 'delivered' || statusType === 'destination-holding') ? 100 : undefined
     const updated = shipments.map(s => {
       if (s.id !== id) return s
       return {

@@ -70,6 +70,7 @@ export async function upsertShipmentTelemetry(
     if (status) {
       const sLower = status.toLowerCase()
       if (sLower.includes('deliver')) inferredStatusType = 'delivered'
+      else if (sLower.includes('touchdown') || sLower.includes('destination holding') || sLower.includes('pending consignee') || sLower.includes('pending acceptance')) inferredStatusType = 'destination-holding'
       else if (sLower.includes('custom')) inferredStatusType = 'customs'
       else if (sLower.includes('staging')) inferredStatusType = 'staging'
       else if (sLower.includes('transit') || sLower.includes('convoy') || sLower.includes('flight') || sLower.includes('air')) inferredStatusType = 'in-flight'

@@ -721,6 +721,8 @@ export function ClientDashboard() {
                     <div className="rounded-lg bg-[#dfba6c]/10 p-2 text-[#dfba6c]">
                       {activeConsignment?.status?.toLowerCase().includes('delivered') ? (
                         <CheckCircle2 size={18} className="text-emerald-400" />
+                      ) : activeConsignment?.statusType === 'destination-holding' || (activeConsignment?.progress >= 100 && !activeConsignment?.status?.toLowerCase().includes('delivered')) || activeConsignment?.status?.toLowerCase().includes('touchdown') || activeConsignment?.status?.toLowerCase().includes('pending consignee') || activeConsignment?.status?.toLowerCase().includes('destination holding') ? (
+                        <Building2 size={18} className="text-[#dfba6c]" />
                       ) : (
                         <Plane size={18} />
                       )}
@@ -729,6 +731,8 @@ export function ClientDashboard() {
                   <p className="font-serif text-lg sm:text-xl text-white font-bold truncate">
                     {activeConsignment?.status?.toLowerCase().includes('delivered')
                       ? 'Delivered'
+                      : (activeConsignment?.statusType === 'destination-holding' || (activeConsignment?.progress >= 100 && !activeConsignment?.status?.toLowerCase().includes('delivered')) || activeConsignment?.status?.toLowerCase().includes('touchdown') || activeConsignment?.status?.toLowerCase().includes('pending consignee') || activeConsignment?.status?.toLowerCase().includes('destination holding'))
+                      ? 'Destination Holding'
                       : activeConsignment?.status?.toLowerCase().includes('customs')
                       ? 'Customs Hold'
                       : activeConsignment?.status?.toLowerCase().includes('staging')
@@ -738,7 +742,9 @@ export function ClientDashboard() {
                       : 'Airborne In-Transit'}
                   </p>
                   <p className="mt-1 text-xs text-[#dfba6c] font-mono truncate">
-                    {activeConsignment?.status || 'Cruising FL380 • Armed Escort'}
+                    {(activeConsignment?.statusType === 'destination-holding' || (activeConsignment?.progress >= 100 && !activeConsignment?.status?.toLowerCase().includes('delivered')) || activeConsignment?.status?.toLowerCase().includes('touchdown') || activeConsignment?.status?.toLowerCase().includes('pending consignee') || activeConsignment?.status?.toLowerCase().includes('destination holding'))
+                      ? 'Touchdown Confirmed • Awaiting Receiver Handover'
+                      : (activeConsignment?.status || 'Cruising FL380 • Armed Escort')}
                   </p>
                 </div>
 
@@ -761,89 +767,129 @@ export function ClientDashboard() {
               {/* Active Radar Teaser Banner */}
               {activeConsignment && (
                 <div className="rounded-3xl border border-[#dfba6c]/30 bg-[#12151e] p-6 sm:p-8 shadow-xl">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-[#242833] pb-6">
-                    <div>
-                      <div className="flex items-center gap-2.5 mb-1.5">
-                        <span className={`size-2 rounded-full animate-pulse ${
-                          activeConsignment.status?.toLowerCase().includes('delivered')
-                            ? 'bg-emerald-400'
-                            : activeConsignment.status?.toLowerCase().includes('customs')
-                            ? 'bg-amber-400'
-                            : activeConsignment.status?.toLowerCase().includes('staging')
-                            ? 'bg-blue-400'
-                            : 'bg-[#dfba6c]'
-                        }`} />
-                        <span className={`text-xs font-mono font-bold uppercase tracking-wider ${
-                          activeConsignment.status?.toLowerCase().includes('delivered')
-                            ? 'text-emerald-400'
-                            : activeConsignment.status?.toLowerCase().includes('customs')
-                            ? 'text-amber-300'
-                            : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
-                            ? 'text-blue-300'
-                            : 'text-[#dfba6c]'
-                        }`}>
-                          {activeConsignment.intermediateStop?.status === 'active_stage'
-                            ? 'Secured Holding in Transit'
-                            : (activeConsignment.status || 'In Transit — Chartered Air-Specie Corridor')}
-                        </span>
-                        <span className="font-mono text-xs text-gray-400">
-                          {activeConsignment.trackingNumber}
-                        </span>
-                      </div>
-                      {(() => {
-                        const isStagedNow = activeConsignment.statusType === 'staging' || activeConsignment.status?.toLowerCase().includes('staging')
-                        const isDestinationPending = activeConsignment.destination.city.toLowerCase().includes('pending')
+                  {(() => {
+                    const isHoldingAtDest =
+                      activeConsignment.statusType === 'destination-holding' ||
+                      (activeConsignment.progress >= 100 && !activeConsignment.status?.toLowerCase().includes('delivered')) ||
+                      activeConsignment.status?.toLowerCase().includes('touchdown') ||
+                      activeConsignment.status?.toLowerCase().includes('pending consignee') ||
+                      activeConsignment.status?.toLowerCase().includes('destination holding')
+                    const isStagedNow = activeConsignment.statusType === 'staging' || activeConsignment.status?.toLowerCase().includes('staging')
+                    const isDestinationPending = activeConsignment.destination.city.toLowerCase().includes('pending')
 
-                        return (
-                          <>
+                    return (
+                      <>
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-[#242833] pb-6">
+                          <div>
+                            <div className="flex items-center gap-2.5 mb-1.5">
+                              <span className={`size-2 rounded-full animate-pulse ${
+                                activeConsignment.status?.toLowerCase().includes('delivered')
+                                  ? 'bg-emerald-400'
+                                  : isHoldingAtDest
+                                  ? 'bg-amber-400 ring-4 ring-amber-400/20'
+                                  : activeConsignment.status?.toLowerCase().includes('customs')
+                                  ? 'bg-amber-400'
+                                  : activeConsignment.status?.toLowerCase().includes('staging')
+                                  ? 'bg-blue-400'
+                                  : 'bg-[#dfba6c]'
+                              }`} />
+                              <span className={`text-xs font-mono font-bold uppercase tracking-wider ${
+                                activeConsignment.status?.toLowerCase().includes('delivered')
+                                  ? 'text-emerald-400'
+                                  : isHoldingAtDest
+                                  ? 'text-amber-300'
+                                  : activeConsignment.status?.toLowerCase().includes('customs')
+                                  ? 'text-amber-300'
+                                  : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
+                                  ? 'text-blue-300'
+                                  : 'text-[#dfba6c]'
+                              }`}>
+                                {isHoldingAtDest
+                                  ? 'ARRIVED AT DESTINATION • PENDING CONSIGNEE ACCEPTANCE'
+                                  : activeConsignment.intermediateStop?.status === 'active_stage'
+                                  ? 'Secured Holding in Transit'
+                                  : (activeConsignment.status || 'In Transit — Chartered Air-Specie Corridor')}
+                              </span>
+                              <span className="font-mono text-xs text-gray-400">
+                                {activeConsignment.trackingNumber}
+                              </span>
+                            </div>
+
                             <h3 className="font-serif text-xl sm:text-2xl font-bold text-white">
                               {isStagedNow && isDestinationPending
                                 ? `${activeConsignment.origin.city} (${activeConsignment.origin.code}) • Subterranean Vault Custody`
                                 : `${activeConsignment.origin.city} (${activeConsignment.origin.code}) → ${activeConsignment.destination.city} (${activeConsignment.destination.code})`}
                             </h3>
                             <p className="text-xs text-gray-300 mt-1 font-mono">
-                              {isStagedNow
+                              {isHoldingAtDest
+                                ? `Touchdown Confirmed • Lodged in ${activeConsignment.destination.facility} (${activeConsignment.destination.city}) Vault • Escort: ${activeConsignment.custodyOfficer.split('(')[0].trim()} • Awaiting Biometric Acceptance`
+                                : isStagedNow
                                 ? `Protocol: Subterranean Vault Lodgement • Custody: ${activeConsignment.custodyOfficer.split('(')[0].trim()} • Status: Staged in Vault`
                                 : `Flight ${activeConsignment.carrierFlightNumber || 'AV-US-93901'} • Senior Escort ${activeConsignment.custodyOfficer.split('(')[0].trim()} • ETA: ${activeConsignment.eta}`}
                             </p>
-                          </>
-                        )
-                      })()}
-                    </div>
+                          </div>
 
-                    <button
-                      onClick={() => handleTabNavigation('radar')}
-                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 shrink-0 self-start md:self-auto"
-                    >
-                      <Compass size={16} />
-                      <span>Open Interactive Radar</span>
-                      <ArrowUpRight size={15} />
-                    </button>
-                  </div>
-
-                  {/* Visual Timeline Progress */}
-                  <div className="mt-6">
-                    {(() => {
-                      const isStagedNow = activeConsignment.statusType === 'staging' || activeConsignment.status?.toLowerCase().includes('staging')
-                      return (
-                        <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
-                          <span>Origin: {activeConsignment.origin.facility}</span>
-                          <span className="text-[#dfba6c] font-bold">
-                            {isStagedNow && activeConsignment.progress === 0
-                              ? 'Lodged in Vault (0% In Transit)'
-                              : `${activeConsignment.progress}% Handover Progress`}
-                          </span>
-                          <span>Dest: {activeConsignment.destination.city.toLowerCase().includes('pending') ? 'Awaiting Dispatch Orders' : activeConsignment.destination.facility}</span>
+                          <button
+                            onClick={() => handleTabNavigation('radar')}
+                            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#dfba6c] to-[#c29b43] px-5 py-3 text-xs sm:text-sm font-bold text-black hover:opacity-95 transition shadow-lg shadow-[#c29b43]/20 shrink-0 self-start md:self-auto cursor-pointer"
+                          >
+                            <Compass size={16} />
+                            <span>Open Interactive Radar</span>
+                            <ArrowUpRight size={15} />
+                          </button>
                         </div>
-                      )
-                    })()}
-                    <div className="h-2.5 w-full rounded-full bg-[#1e2330] overflow-hidden p-0.5">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#dfba6c] to-[#c29b43] transition-all duration-700 shadow-sm"
-                        style={{ width: `${activeConsignment.progress}%` }}
-                      />
-                    </div>
-                  </div>
+
+                        {/* Special Safe Touchdown Notice Banner when at Destination Holding */}
+                        {isHoldingAtDest && (
+                          <div className="mt-5 rounded-2xl border border-[#dfba6c]/40 bg-gradient-to-r from-[#dfba6c]/15 via-[#dfba6c]/5 to-transparent p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                            <div className="flex items-start gap-3">
+                              <div className="size-9 rounded-xl bg-[#dfba6c]/20 border border-[#dfba6c]/40 flex items-center justify-center text-[#dfba6c] shrink-0 mt-0.5">
+                                <ShieldCheck size={18} />
+                              </div>
+                              <div>
+                                <div className="font-bold text-white text-xs font-mono flex items-center gap-2">
+                                  <span>FLIGHT TOUCHDOWN COMPLETE • CONSIGNMENT IN SECURED AIRSIDE HOLDING</span>
+                                </div>
+                                <p className="text-[11px] text-gray-300 font-mono mt-0.5 leading-relaxed">
+                                  Consignment has safely arrived at <strong className="text-white">{activeConsignment.destination.facility}</strong>. Senior escort detail is standing by for consignee dual-biometric identification and delivery completion.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-bold shrink-0 self-start sm:self-auto">
+                              <span>⏳ AWAITING CONSIGNEE</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Visual Timeline Progress */}
+                        <div className="mt-6">
+                          <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
+                            <span>Origin: {activeConsignment.origin.facility}</span>
+                            <span className="text-[#dfba6c] font-bold">
+                              {isHoldingAtDest
+                                ? '100% Flight Completed • Airside Custody'
+                                : isStagedNow && activeConsignment.progress === 0
+                                ? 'Lodged in Vault (0% In Transit)'
+                                : `${activeConsignment.progress}% Handover Progress`}
+                            </span>
+                            <span>
+                              Dest: {isHoldingAtDest
+                                ? `${activeConsignment.destination.facility} (TOUCHDOWN)`
+                                : activeConsignment.destination.city.toLowerCase().includes('pending')
+                                ? 'Awaiting Dispatch Orders'
+                                : activeConsignment.destination.facility}
+                            </span>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-[#1e2330] overflow-hidden p-0.5">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-[#dfba6c] to-[#c29b43] transition-all duration-700 shadow-sm"
+                              style={{ width: `${activeConsignment.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               )}
 
@@ -1020,31 +1066,50 @@ export function ClientDashboard() {
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-[#242833] pb-5">
                   <div>
                     <div className="flex items-center gap-3">
-                      <span className={`size-3 rounded-full animate-pulse ring-4 ${
-                        activeConsignment.status?.toLowerCase().includes('delivered')
-                          ? 'bg-emerald-400 ring-emerald-500/20'
-                          : activeConsignment.status?.toLowerCase().includes('customs')
-                          ? 'bg-amber-400 ring-amber-500/20'
-                          : activeConsignment.status?.toLowerCase().includes('staging')
-                          ? 'bg-blue-400 ring-blue-500/20'
-                          : 'bg-[#dfba6c] ring-[#dfba6c]/20'
-                      }`} />
-                      <span className="font-mono text-base sm:text-lg font-bold text-white">
-                        {activeConsignment.trackingNumber}
-                      </span>
-                      <span className={`rounded-full px-3 py-0.5 text-xs font-mono font-bold uppercase border ${
-                        activeConsignment.status?.toLowerCase().includes('delivered')
-                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                          : activeConsignment.status?.toLowerCase().includes('customs')
-                          ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                          : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
-                          ? 'bg-blue-500/15 border-blue-500/30 text-blue-300'
-                          : 'bg-[#dfba6c]/15 border-[#dfba6c]/30 text-[#dfba6c]'
-                      }`}>
-                        {activeConsignment.intermediateStop?.status === 'active_stage'
-                          ? 'Secured Holding in Transit'
-                          : activeConsignment.status}
-                      </span>
+                      {(() => {
+                        const isHoldingAtDest =
+                          activeConsignment.statusType === 'destination-holding' ||
+                          (activeConsignment.progress >= 100 && !activeConsignment.status?.toLowerCase().includes('delivered')) ||
+                          activeConsignment.status?.toLowerCase().includes('touchdown') ||
+                          activeConsignment.status?.toLowerCase().includes('pending consignee') ||
+                          activeConsignment.status?.toLowerCase().includes('destination holding')
+
+                        return (
+                          <>
+                            <span className={`size-3 rounded-full animate-pulse ring-4 ${
+                              activeConsignment.status?.toLowerCase().includes('delivered')
+                                ? 'bg-emerald-400 ring-emerald-500/20'
+                                : isHoldingAtDest
+                                ? 'bg-[#dfba6c] ring-[#dfba6c]/40'
+                                : activeConsignment.status?.toLowerCase().includes('customs')
+                                ? 'bg-amber-400 ring-amber-500/20'
+                                : activeConsignment.status?.toLowerCase().includes('staging')
+                                ? 'bg-blue-400 ring-blue-500/20'
+                                : 'bg-[#dfba6c] ring-[#dfba6c]/20'
+                            }`} />
+                            <span className="font-mono text-base sm:text-lg font-bold text-white">
+                              {activeConsignment.trackingNumber}
+                            </span>
+                            <span className={`rounded-full px-3 py-0.5 text-xs font-mono font-bold uppercase border ${
+                              activeConsignment.status?.toLowerCase().includes('delivered')
+                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                                : isHoldingAtDest
+                                ? 'bg-amber-500/15 border-[#dfba6c]/50 text-[#dfba6c]'
+                                : activeConsignment.status?.toLowerCase().includes('customs')
+                                ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                                : (activeConsignment.status?.toLowerCase().includes('staging') || activeConsignment.intermediateStop?.status === 'active_stage')
+                                ? 'bg-blue-500/15 border-blue-500/30 text-blue-300'
+                                : 'bg-[#dfba6c]/15 border-[#dfba6c]/30 text-[#dfba6c]'
+                            }`}>
+                              {isHoldingAtDest
+                                ? 'ARRIVED AT DESTINATION • PENDING HANDOVER'
+                                : activeConsignment.intermediateStop?.status === 'active_stage'
+                                ? 'Secured Holding in Transit'
+                                : activeConsignment.status}
+                            </span>
+                          </>
+                        )
+                      })()}
                     </div>
                     <p className="text-xs text-gray-400 mt-1 font-mono">
                       {activeConsignment.manifest.itemType} • Escort Detail: {activeConsignment.custodyOfficer.split('(')[0].trim()}
