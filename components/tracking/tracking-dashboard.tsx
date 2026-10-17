@@ -1,9 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useShipments } from '@/lib/shipments-context'
 import { useAuth } from '@/lib/auth-context'
-import { Shipment } from '@/lib/types'
+import { PublicShipmentVerification } from '@/lib/types'
 import {
   ShieldCheck,
   Lock,
@@ -12,42 +11,57 @@ import {
   ArrowRight,
   Shield,
   Plane,
-  Building2,
-  ExternalLink,
   Key,
   Award,
   AlertCircle,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 
+const DEMO_REFERENCES = [
+  { label: 'AV-US-93901 (Chartered Air Specie)', ref: 'AV-US-93901' },
+  { label: 'GOLD-2026-093901 (Indiana → Kentucky)', ref: 'GOLD-2026-093901' },
+]
+
 export function TrackingDashboard() {
-  const { shipments, selectedShipmentId, setSelectedShipmentId } = useShipments()
   const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchedShipment, setSearchedShipment] = useState<Shipment | null>(null)
+  const [verification, setVerification] = useState<PublicShipmentVerification | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const activeShipment = hasSearched
-    ? searchedShipment
-    : shipments.find(s => s.id === selectedShipmentId) || shipments[0]
-
-  const handleSearch = (queryToSearch: string) => {
-    const q = queryToSearch.trim().toLowerCase()
+  const handleSearch = async (queryToSearch: string) => {
+    const q = queryToSearch.trim()
     if (!q) {
       setHasSearched(false)
+      setVerification(null)
+      setErrorMessage(null)
       return
     }
-    const found = shipments.find(
-      s =>
-        s.id.toLowerCase() === q ||
-        s.trackingNumber.toLowerCase() === q ||
-        s.origin.city.toLowerCase().includes(q) ||
-        s.destination.city.toLowerCase().includes(q)
-    )
+
+    setIsSearching(true)
     setHasSearched(true)
-    setSearchedShipment(found || null)
-    if (found) {
-      setSelectedShipmentId(found.id)
+    setErrorMessage(null)
+
+    try {
+      const res = await fetch(`/api/shipments/verify?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      if (res.ok && data.success && data.verification) {
+        setVerification(data.verification)
+        setErrorMessage(null)
+      } else {
+        setVerification(null)
+        setErrorMessage(
+          data.error ||
+            'The reference code entered does not match active sovereign custody manifests. Please verify the code or contact your AurumVault officer.'
+        )
+      }
+    } catch {
+      setVerification(null)
+      setErrorMessage('Verification gateway is temporarily unreachable. Please retry shortly.')
+    } finally {
+      setIsSearching(false)
     }
   }
 
@@ -104,7 +118,7 @@ export function TrackingDashboard() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <input
               type="text"
-              placeholder="Enter reference ID (e.g. GOLD-2026-001245 or AV-DXB-GVA-99428-X)"
+              placeholder="Enter reference ID (e.g. GOLD-2026-093901 or AV-US-93901)"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="h-12 w-full rounded-xl border border-border bg-background pl-11 pr-4 text-xs sm:text-sm font-mono text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
@@ -112,57 +126,60 @@ export function TrackingDashboard() {
           </div>
           <button
             type="submit"
-            className="h-12 w-full sm:w-auto rounded-xl bg-foreground px-6 text-xs sm:text-sm font-semibold text-background hover:bg-foreground/90 transition shadow-sm whitespace-nowrap"
+            disabled={isSearching}
+            className="h-12 w-full sm:w-auto rounded-xl bg-foreground px-6 text-xs sm:text-sm font-semibold text-background hover:bg-foreground/90 transition shadow-sm whitespace-nowrap disabled:opacity-50"
           >
-            Verify Reference
+            {isSearching ? 'Verifying...' : 'Verify Reference'}
           </button>
         </form>
 
         {/* Quick Demo Reference Buttons */}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground font-medium">Demo Registered Convoys:</span>
-          {shipments.slice(0, 3).map(s => (
+          <span className="text-muted-foreground font-medium">Verified Fleet References:</span>
+          {DEMO_REFERENCES.map(item => (
             <button
-              key={s.id}
+              key={item.ref}
               onClick={() => {
-                setSearchQuery(s.id)
-                setHasSearched(false)
-                setSelectedShipmentId(s.id)
+                setSearchQuery(item.ref)
+                handleSearch(item.ref)
               }}
               className={`rounded-lg border px-2.5 py-1 text-[11px] font-mono transition ${
-                activeShipment?.id === s.id
+                verification?.id === item.ref || verification?.trackingNumber === item.ref
                   ? 'border-primary bg-primary/10 text-primary font-bold'
                   : 'border-border bg-background hover:bg-muted text-foreground'
               }`}
             >
-              {s.id}
+              {item.ref}
             </button>
           ))}
         </div>
 
-        {/* Verified Consignment Result Card */}
-        {activeShipment ? (
+        {/* Dynamic Verification Content State */}
+        {isSearching ? (
+          <div className="mt-8 flex flex-col items-center justify-center p-8 rounded-2xl border border-border bg-muted/10 text-center">
+            <Loader2 size={24} className="animate-spin text-primary mb-2" />
+            <p className="text-xs font-mono text-muted-foreground">Querying Swiss Specie Custody Registry...</p>
+          </div>
+        ) : verification ? (
           <div className="mt-8 rounded-2xl border border-primary/40 bg-gradient-to-br from-card via-background to-primary/[0.03] p-6 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="font-mono text-base font-bold text-foreground">
-                    {activeShipment.trackingNumber}
+                    {verification.trackingNumber}
                   </span>
                   <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 uppercase">
                     Verified Authentic
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Consignment #{activeShipment.id} • Registered under Specie Escort Protocols
+                  Consignment #{verification.id} • Registered under Specie Escort Protocols
                 </p>
               </div>
 
               <span className="rounded-lg bg-muted px-2.5 py-1 text-xs font-mono text-muted-foreground self-start sm:self-auto">
-                Status: {activeShipment.intermediateStop?.status === 'active_stage'
-                  ? 'Secured Holding in Transit'
-                  : activeShipment.status}
+                Status: {verification.status}
               </span>
             </div>
 
@@ -173,10 +190,10 @@ export function TrackingDashboard() {
                   Departure Facility
                 </span>
                 <p className="text-sm font-semibold text-foreground mt-0.5">
-                  {activeShipment.origin.city} ({activeShipment.origin.code})
+                  {verification.originCity} ({verification.originCode})
                 </p>
                 <p className="text-[11px] text-muted-foreground line-clamp-1 font-mono">
-                  {activeShipment.origin.facility}
+                  {verification.originFacility}
                 </p>
               </div>
 
@@ -185,10 +202,10 @@ export function TrackingDashboard() {
                   Custodial Destination
                 </span>
                 <p className="text-sm font-semibold text-foreground mt-0.5">
-                  {activeShipment.destination.city} ({activeShipment.destination.code})
+                  {verification.destinationCity} ({verification.destinationCode})
                 </p>
                 <p className="text-[11px] text-muted-foreground line-clamp-1 font-mono">
-                  {activeShipment.destination.facility}
+                  {verification.destinationFacility}
                 </p>
               </div>
 
@@ -197,10 +214,10 @@ export function TrackingDashboard() {
                   Underwriting & Security
                 </span>
                 <p className="text-sm font-semibold text-foreground mt-0.5">
-                  Lloyd's Specie Syndicate
+                  {verification.underwriting}
                 </p>
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Policy: {activeShipment.manifest.policyNumber}
+                  ETA: {verification.eta}
                 </p>
               </div>
             </div>
@@ -227,15 +244,21 @@ export function TrackingDashboard() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : hasSearched && errorMessage ? (
           <div className="mt-8 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive flex items-center gap-3">
             <AlertCircle size={18} className="shrink-0" />
             <div>
               <p className="font-semibold">Reference Not Recognized</p>
-              <p className="mt-0.5 opacity-90">
-                The reference code entered does not match active sovereign custody manifests. Please verify the code or contact your AurumVault officer.
-              </p>
+              <p className="mt-0.5 opacity-90">{errorMessage}</p>
             </div>
+          </div>
+        ) : (
+          <div className="mt-8 rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
+            <ShieldCheck size={28} className="mx-auto text-primary/60 mb-2" />
+            <p className="font-semibold text-foreground text-sm">Awaiting Reference Query</p>
+            <p className="mt-1 max-w-md mx-auto leading-relaxed">
+              Enter a consignment reference identifier or select one of the verified fleet references above to query the Swiss Specie Custody Registry.
+            </p>
           </div>
         )}
       </div>

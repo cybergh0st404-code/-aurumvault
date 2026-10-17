@@ -67,32 +67,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               prev.noticeMessage !== data.user.noticeMessage
 
             if (hasChanged) {
-              try {
-                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user))
-              } catch {}
               return data.user
             }
             return prev
           })
         } else {
           // If server reports no active session (e.g. Admin remotely logged out user or suspended account)
-          setUser(prev => {
-            if (prev) {
-              try {
-                localStorage.removeItem(AUTH_STORAGE_KEY)
-              } catch {}
-              return null
-            }
-            return null
-          })
-        }
-      } catch (err) {
-        if (isInitial) {
+          setUser(null)
           try {
-            const cached = localStorage.getItem(AUTH_STORAGE_KEY)
-            if (cached && isMounted) setUser(JSON.parse(cached))
+            localStorage.removeItem(AUTH_STORAGE_KEY)
           } catch {}
         }
+      } catch (err) {
+        // Silently tolerate network blips; cookie session remains authoritative
       } finally {
         if (isInitial && isMounted) {
           setIsLoading(false)
@@ -111,14 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const persistUser = (profile: UserProfile | null) => {
     setUser(profile)
     try {
-      if (profile) {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile))
-      } else {
-        localStorage.removeItem(AUTH_STORAGE_KEY)
-      }
-    } catch (err) {
-      console.warn('Could not persist auth to localStorage:', err)
-    }
+      localStorage.removeItem(AUTH_STORAGE_KEY)
+    } catch {}
   }
 
   // SQLite-backed authentication with scrypt salted verification
@@ -160,6 +141,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {}
+    try {
+      localStorage.removeItem('aurumvault_shipments_v1')
+      localStorage.removeItem('aurumvault_holdings_v1')
+      localStorage.removeItem('aurumvault_quotes_v1')
     } catch {}
     persistUser(null)
   }

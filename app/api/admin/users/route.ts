@@ -8,6 +8,14 @@ import {
   updateUserRestrictions,
   terminateUserSessions,
 } from '@/lib/db/user-repository'
+import { recordAuditLog } from '@/lib/db/audit-repository'
+import { validatePasswordStrength } from '@/lib/db/password'
+
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0].trim()
+  return request.headers.get('x-real-ip') || '127.0.0.1'
+}
 
 async function getAdminUser() {
   const cookieStore = await cookies()
@@ -42,6 +50,12 @@ export async function POST(request: Request) {
 
     if (!email || !password || !name || !role) {
       return NextResponse.json({ error: 'Name, email, password, and role are required.' }, { status: 400 })
+    }
+
+    const { validatePasswordStrength } = await import('@/lib/db/password')
+    const passCheck = validatePasswordStrength(password)
+    if (!passCheck.valid) {
+      return NextResponse.json({ error: passCheck.error }, { status: 400 })
     }
 
     const { parseDeclaredValue, formatDeclaredValue } = await import('@/lib/weight-utils')
@@ -85,6 +99,21 @@ export async function POST(request: Request) {
       } : undefined),
     } as any)
 
+    const clientIp = getClientIp(request)
+    await recordAuditLog({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: 'create_user',
+      targetId: created.id,
+      ipAddress: clientIp,
+      details: {
+        name: created.name,
+        email: created.email,
+        role: created.role,
+        clientCode: created.client_code,
+      },
+    })
+
     return NextResponse.json({ success: true, user: created })
   } catch (error: any) {
     console.error('Create user error:', error)
@@ -105,6 +134,7 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const targetId = body.id || body.userId
     const action = body.action
+    const clientIp = getClientIp(request)
     const targetValue = body.value !== undefined 
       ? Boolean(body.value) 
       : Boolean(body.isDashboardLocked ?? body.isCertificateLocked ?? body.isSuspended)
@@ -114,6 +144,13 @@ export async function PATCH(request: Request) {
     }
 
     if (action === 'update_profile' || action === 'update_user' || action === 'edit_details') {
+      if (body.password) {
+        const passCheck = validatePasswordStrength(body.password)
+        if (!passCheck.valid) {
+          return NextResponse.json({ error: passCheck.error }, { status: 400 })
+        }
+      }
+
       const { updateUserProfile } = await import('@/lib/db/user-repository')
       const updated = await updateUserProfile(targetId, {
         name: body.name,
@@ -213,6 +250,22 @@ export async function PATCH(request: Request) {
         }
       }
 
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'update_user_profile',
+        targetId,
+        ipAddress: clientIp,
+        details: {
+          name: body.name,
+          email: body.email,
+          organization: body.organization,
+          securityClearance: body.securityClearance,
+          clientCode: body.clientCode,
+          passwordUpdated: Boolean(body.password),
+        },
+      })
+
       return NextResponse.json({ success: true, user: updated })
     }
 
@@ -222,6 +275,14 @@ export async function PATCH(request: Request) {
 
     if (action === 'logout_user') {
       const terminatedCount = await terminateUserSessions(targetId)
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'terminate_user_sessions',
+        targetId,
+        ipAddress: clientIp,
+        details: { terminatedCount },
+      })
       return NextResponse.json({
         success: true,
         message: `Terminated ${terminatedCount} active session(s) for user.`,
@@ -230,16 +291,40 @@ export async function PATCH(request: Request) {
 
     if (action === 'toggle_dashboard_lock') {
       const updated = await updateUserRestrictions(targetId, { isDashboardLocked: targetValue })
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'toggle_dashboard_lock',
+        targetId,
+        ipAddress: clientIp,
+        details: { isDashboardLocked: targetValue },
+      })
       return NextResponse.json({ success: true, user: updated })
     }
 
     if (action === 'toggle_certificate_lock') {
       const updated = await updateUserRestrictions(targetId, { isCertificateLocked: targetValue })
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'toggle_certificate_lock',
+        targetId,
+        ipAddress: clientIp,
+        details: { isCertificateLocked: targetValue },
+      })
       return NextResponse.json({ success: true, user: updated })
     }
 
     if (action === 'toggle_suspend') {
       const updated = await updateUserRestrictions(targetId, { isSuspended: targetValue })
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'toggle_suspend',
+        targetId,
+        ipAddress: clientIp,
+        details: { isSuspended: targetValue },
+      })
       return NextResponse.json({ success: true, user: updated })
     }
 
@@ -254,6 +339,14 @@ export async function PATCH(request: Request) {
         noticeActive,
         noticeTitle,
         noticeMessage,
+      })
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'set_notice',
+        targetId,
+        ipAddress: clientIp,
+        details: { noticeActive, noticeTitle, noticeMessage },
       })
       return NextResponse.json({ success: true, user: updated })
     }
@@ -284,6 +377,17 @@ export async function DELETE(request: Request) {
     }
 
     const success = await deleteUser(id)
+    if (success) {
+      const clientIp = getClientIp(request)
+      await recordAuditLog({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: 'delete_user',
+        targetId: id,
+        ipAddress: clientIp,
+        details: { deletedUserId: id },
+      })
+    }
     return NextResponse.json({ success })
   } catch (error) {
     console.error('Delete user error:', error)

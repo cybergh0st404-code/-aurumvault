@@ -30,3 +30,30 @@ export function verifyPassword(password: string, storedHash: string, salt: strin
     return false
   }
 }
+
+/**
+ * Validates cryptographic passkey strength for institutional security compliance.
+ * Requires at least 10 characters, including uppercase, lowercase, numbers, and symbols.
+ */
+export function validatePasswordStrength(password: string): { valid: boolean; error?: string } {
+  if (!password || typeof password !== 'string') {
+    return { valid: false, error: 'Cryptographic passkey is required.' }
+  }
+  if (password.length < 10) {
+    return { valid: false, error: 'Passkey must be at least 10 characters in length.' }
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, error: 'Passkey must contain at least one uppercase letter (A-Z).' }
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: 'Passkey must contain at least one lowercase letter (a-z).' }
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, error: 'Passkey must contain at least one numeric digit (0-9).' }
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return { valid: false, error: 'Passkey must contain at least one special symbol (!@#$%^&* etc).' }
+  }
+  return { valid: true }
+}
+

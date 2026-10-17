@@ -213,8 +213,8 @@ export async function createSession(userId: string): Promise<{ token: string; ex
   await ensureDbInitialized()
   const db = getDb()
   const token = crypto.randomBytes(32).toString('hex')
-  // 7 days expiration
-  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000
+  // 24 hours expiration (Sovereign session security hardening)
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000
 
   await db.execute({
     sql: `

@@ -346,5 +346,24 @@ export const STANDARD_DEPOSITORY_HUBS: DepositoryHub[] = [
   },
 ]
 
+export interface PublicShipmentVerification {
+  id: string
+  trackingNumber: string
+  status: string
+  statusType: string
+  originCity: string
+  originCountry: string
+  originFacility: string
+  originCode: string
+  destinationCity: string
+  destinationCountry: string
+  destinationFacility: string
+  destinationCode: string
+  eta: string
+  underwriting: string
+  isVerified: boolean
+}
+
+
 
 

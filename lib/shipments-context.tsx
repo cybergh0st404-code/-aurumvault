@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { Shipment, Checkpoint, QuoteInquiry, VaultHolding } from './types'
 import { shipmentsData as defaultShipments, initialVaultHoldings as defaultVaultHoldings } from './shipments-data'
+import { useAuth } from './auth-context'
 
 interface SimulationSettings {
   isCruising: boolean
@@ -76,75 +77,50 @@ const QUOTES_STORAGE_KEY = 'aurumvault_quotes_v1'
 const HOLDINGS_STORAGE_KEY = 'aurumvault_holdings_v1'
 
 export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
-  const [shipments, setShipments] = useState<Shipment[]>(defaultShipments)
-  const [selectedShipmentId, setSelectedShipmentId] = useState<string>(defaultShipments[0].id)
+  const { isAuthenticated } = useAuth()
+  const [shipments, setShipments] = useState<Shipment[]>([])
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string>('')
   const [quoteInquiries, setQuoteInquiries] = useState<QuoteInquiry[]>(initialQuotes)
-  const [vaultHoldings, setVaultHoldings] = useState<VaultHolding[]>(defaultVaultHoldings)
+  const [vaultHoldings, setVaultHoldings] = useState<VaultHolding[]>([])
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings>({
     isCruising: true,
     cruiseSpeed: 1,
   })
 
-  // Load from localStorage on mount
+  // Synchronize state strictly with sovereign authentication status
   useEffect(() => {
-    try {
-      const savedShipments = localStorage.getItem(STORAGE_KEY)
-      if (savedShipments) {
-        const parsed: Shipment[] = JSON.parse(savedShipments)
-        // Refresh default shipments with current flight parameters while preserving live progress
-        const merged = defaultShipments.map(def => {
-          const saved = parsed.find(s => s.id === def.id)
-          return saved
-            ? { ...def, ...saved, progress: saved.progress ?? def.progress }
-            : def
-        })
-        const custom = parsed.filter(s => !defaultShipments.some(def => def.id === s.id))
-        setShipments([...merged, ...custom])
-      }
-      const savedQuotes = localStorage.getItem(QUOTES_STORAGE_KEY)
-      if (savedQuotes) {
-        setQuoteInquiries(JSON.parse(savedQuotes))
-      }
-      const savedHoldings = localStorage.getItem(HOLDINGS_STORAGE_KEY)
-      if (savedHoldings) {
-        const parsed: VaultHolding[] = JSON.parse(savedHoldings)
-        const mergedHoldings = defaultVaultHoldings.map(def => {
-          const saved = parsed.find(h => h.id === def.id)
-          return saved
-            ? { ...def, status: saved.status ?? def.status }
-            : def
-        })
-        const customHoldings = parsed.filter(h => !defaultVaultHoldings.some(def => def.id === h.id))
-        setVaultHoldings([...mergedHoldings, ...customHoldings])
-      }
-    } catch (e) {
-      console.warn('LocalStorage unavailable:', e)
+    if (isAuthenticated) {
+      refreshShipmentsFromServer()
+      refreshVaultHoldingsFromServer()
+    } else {
+      setShipments([])
+      setVaultHoldings([])
+      setSelectedShipmentId('')
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+        localStorage.removeItem(HOLDINGS_STORAGE_KEY)
+      } catch {}
     }
-
-    refreshShipmentsFromServer()
-    refreshVaultHoldingsFromServer()
-  }, [])
+  }, [isAuthenticated])
 
   const refreshShipmentsFromServer = async () => {
     try {
       const res = await fetch('/api/shipments', { cache: 'no-store' })
-      if (!res.ok) return
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setShipments([])
+        }
+        return
+      }
       const data = await res.json()
-      if (data && data.success && Array.isArray(data.shipments) && data.shipments.length > 0) {
-        setShipments(prev => {
-          return data.shipments.map((newS: Shipment) => {
-            const existing = prev.find(p => p.id === newS.id)
-            if (!existing) return newS
-            return {
-              ...newS,
-              isPaused: Boolean(newS.isPaused),
-              progress: Number(newS.progress ?? 55),
-            }
-          })
-        })
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.shipments))
-        } catch {}
+      if (data && data.success && Array.isArray(data.shipments)) {
+        const mapped = data.shipments.map((newS: Shipment) => ({
+          ...newS,
+          isPaused: Boolean(newS.isPaused),
+          progress: Number(newS.progress ?? 55),
+        }))
+        setShipments(mapped)
+        setSelectedShipmentId(prev => (prev && mapped.some((s: Shipment) => s.id === prev) ? prev : (mapped[0]?.id || '')))
       }
     } catch (e) {
       console.warn('Failed to load server shipments:', e)
@@ -154,21 +130,24 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
   const refreshVaultHoldingsFromServer = async () => {
     try {
       const res = await fetch('/api/vault-holdings', { cache: 'no-store' })
-      if (!res.ok) return
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setVaultHoldings([])
+        }
+        return
+      }
       const data = await res.json()
-      if (data && data.success && Array.isArray(data.holdings) && data.holdings.length > 0) {
+      if (data && data.success && Array.isArray(data.holdings)) {
         setVaultHoldings(data.holdings)
-        try {
-          localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(data.holdings))
-        } catch {}
       }
     } catch (e) {
       console.warn('Failed to load server vault holdings:', e)
     }
   }
 
-  // Real-time server telemetry background sync (cross-device sync across phones/laptops)
+  // Real-time server telemetry background sync (only active when authenticated and active shipments exist)
   useEffect(() => {
+    if (!isAuthenticated || shipments.length === 0) return
     let isMounted = true
 
     const fetchServerTelemetry = async () => {
@@ -499,10 +478,14 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn(e)
     }
-    setShipments(defaultShipments)
-    setSelectedShipmentId(defaultShipments[0].id)
+    if (isAuthenticated) {
+      refreshShipmentsFromServer()
+      refreshVaultHoldingsFromServer()
+    } else {
+      setShipments([])
+      setVaultHoldings([])
+    }
     setQuoteInquiries(initialQuotes)
-    setVaultHoldings(defaultVaultHoldings)
     setSimulationSettings({ isCruising: true, cruiseSpeed: 1 })
   }
 
@@ -517,13 +500,9 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       if (data.success && data.shipment) {
         setShipments(prev => {
           const exists = prev.some(s => s.id === id)
-          const next = exists
+          return exists
             ? prev.map(s => (s.id === id ? data.shipment : s))
             : [...prev, data.shipment]
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-          } catch {}
-          return next
         })
         return data.shipment
       }

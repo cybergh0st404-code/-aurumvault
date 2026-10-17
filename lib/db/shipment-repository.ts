@@ -189,13 +189,13 @@ async function insertShipmentIntoDb(s: Shipment): Promise<void> {
   const db = getDb()
 
   // Extract shipper info if not explicitly present
-  const shipperName = s.shipperName || (s.clientCode === 'CLIENT-HUDSON' ? 'Linda S Hudson' : undefined)
-  const shipperAddress = s.shipperAddress || (s.clientCode === 'CLIENT-HUDSON' ? '1365 Fremont Dr, Hanover Park, IL 60133' : undefined)
-  const shipperPhone = s.shipperPhone || (s.clientCode === 'CLIENT-HUDSON' ? '+1 (470) 305-9614' : undefined)
+  const shipperName = s.shipperName || (s.clientCode === 'CLIENT-HUDSON' ? 'Linda S Hudson Specie Trust' : undefined)
+  const shipperAddress = s.shipperAddress || (s.clientCode === 'CLIENT-HUDSON' ? 'AurumVault Secured Specie Depository (Sector IND-ORD Hub)' : undefined)
+  const shipperPhone = s.shipperPhone || (s.clientCode === 'CLIENT-HUDSON' ? '+1 (800) 555-0199' : undefined)
 
-  const receiverName = s.receiverName || (s.clientCode === 'CLIENT-HUDSON' ? 'Chris Bucksath' : undefined)
-  const receiverContact = s.receiverContact || (s.clientCode === 'CLIENT-HUDSON' ? '+1 (859) 907-3706' : undefined)
-  const receiverAddress = s.receiverAddress || (s.clientCode === 'CLIENT-HUDSON' ? '321 Pimlico Ct Crittenden Ky 41030' : undefined)
+  const receiverName = s.receiverName || (s.clientCode === 'CLIENT-HUDSON' ? 'Designated Authorized Custodian' : undefined)
+  const receiverContact = s.receiverContact || (s.clientCode === 'CLIENT-HUDSON' ? '+1 (800) 555-0198' : undefined)
+  const receiverAddress = s.receiverAddress || (s.clientCode === 'CLIENT-HUDSON' ? 'AurumVault Kentucky Secured Specie Vault (Sector KY-CVG)' : undefined)
   const shippingWeight = s.shippingWeight || s.manifest?.grossWeight || '93.9 g'
 
   await db.execute({
@@ -815,3 +815,66 @@ export async function deleteShipmentFromDb(id: string): Promise<boolean> {
   })
   return res.rowsAffected > 0
 }
+
+export interface PublicShipmentVerification {
+  id: string
+  trackingNumber: string
+  status: string
+  statusType: string
+  originCity: string
+  originCountry: string
+  originFacility: string
+  originCode: string
+  destinationCity: string
+  destinationCountry: string
+  destinationFacility: string
+  destinationCode: string
+  eta: string
+  underwriting: string
+  isVerified: boolean
+}
+
+export async function verifyPublicShipment(reference: string): Promise<PublicShipmentVerification | null> {
+  await ensureDbInitialized()
+  const db = getDb()
+  const cleanRef = reference.trim()
+  if (!cleanRef) return null
+
+  const res = await db.execute({
+    sql: `
+      SELECT s.id, s.tracking_number, 
+             COALESCE(t.status, s.status) as status,
+             s.status_type,
+             s.origin_city, s.origin_country, s.origin_facility, s.origin_code,
+             s.destination_city, s.destination_country, s.destination_facility, s.destination_code,
+             s.eta
+      FROM shipments s
+      LEFT JOIN shipment_telemetry t ON s.id = t.shipment_id
+      WHERE UPPER(s.id) = UPPER(?) OR UPPER(s.tracking_number) = UPPER(?)
+      LIMIT 1
+    `,
+    args: [cleanRef, cleanRef],
+  })
+
+  if (res.rows.length === 0) return null
+  const row = res.rows[0]
+
+  return {
+    id: String(row.id),
+    trackingNumber: String(row.tracking_number),
+    status: String(row.status),
+    statusType: String(row.status_type),
+    originCity: String(row.origin_city),
+    originCountry: String(row.origin_country),
+    originFacility: String(row.origin_facility),
+    originCode: String(row.origin_code),
+    destinationCity: String(row.destination_city),
+    destinationCountry: String(row.destination_country),
+    destinationFacility: String(row.destination_facility),
+    destinationCode: String(row.destination_code),
+    eta: String(row.eta),
+    underwriting: "Lloyd's of London Specie Syndicate (Tier-IV Insured)",
+    isVerified: true,
+  }
+}
+

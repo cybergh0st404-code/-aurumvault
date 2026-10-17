@@ -78,6 +78,15 @@ export async function ensureDbInitialized(): Promise<void> {
     `)
 
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS rate_limits (
+        identifier TEXT PRIMARY KEY,
+        attempts TEXT NOT NULL,
+        locked_until INTEGER,
+        updated_at INTEGER NOT NULL
+      );
+    `)
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS shipment_telemetry (
         shipment_id TEXT PRIMARY KEY,
         progress REAL NOT NULL DEFAULT 55.0,
@@ -88,8 +97,24 @@ export async function ensureDbInitialized(): Promise<void> {
       );
     `)
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        admin_id TEXT NOT NULL,
+        admin_email TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_id TEXT,
+        ip_address TEXT,
+        details TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`)
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_rate_limits_id ON rate_limits(identifier);`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_audit_admin_id ON audit_logs(admin_id);`)
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at);`)
 
     // Seed initial telemetry for consignment GOLD-2026-093901 (AV-US-93901) if not present
     await db.execute({
@@ -122,7 +147,23 @@ export async function ensureDbInitialized(): Promise<void> {
 async function seedDefaultUsers(db: Client) {
   // Read initial sovereign admin credentials strictly from environment variables
   const email = (process.env.ADMIN_EMAIL || 'chief.marshal@aurumvault.ch').trim().toLowerCase()
-  const password = process.env.ADMIN_PASSWORD || 'SwissVault2026!'
+  let password = process.env.ADMIN_PASSWORD?.trim()
+
+  if (!password) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[SECURITY VIOLATION] ADMIN_PASSWORD environment variable is required in production. Refusing to bootstrap admin with a default or insecure password.'
+      )
+    }
+    const crypto = await import('node:crypto')
+    password = crypto.randomBytes(16).toString('hex')
+    console.warn('========================================================================')
+    console.warn('[SECURITY NOTICE] ADMIN_PASSWORD was not defined in environment.')
+    console.warn(`[SECURITY NOTICE] Generated one-time bootstrap admin key: ${password}`)
+    console.warn('Set ADMIN_PASSWORD in your .env.local file to persist credentials.')
+    console.warn('========================================================================')
+  }
+
   const name = process.env.ADMIN_NAME || 'Marshal Henri Weber'
   const organization = process.env.ADMIN_ORGANIZATION || 'AurumVault Federal Operations Command (Geneva HQ)'
   const clearance = process.env.ADMIN_CLEARANCE || 'LEVEL-V SWISS AIRSPACE COMMAND (ARMED SPECIE)'
@@ -153,8 +194,17 @@ async function seedDefaultUsers(db: Client) {
     ],
   })
 
-  // Linda S Hudson (Private Specie Client - Indiana / Kentucky Consignment)
-  const clientCreds = hashPassword('Hudson2026!')
+  // Seed default client account from environment or generate cryptographic token
+  let clientPassword = process.env.CLIENT_SEED_PASSWORD?.trim()
+  if (!clientPassword) {
+    const crypto = await import('node:crypto')
+    clientPassword = crypto.randomBytes(16).toString('hex')
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[SECURITY NOTICE] Generated bootstrap client key for Linda S Hudson: ${clientPassword}`)
+    }
+  }
+
+  const clientCreds = hashPassword(clientPassword)
   await db.execute({
     sql: `INSERT OR IGNORE INTO users (
       id, email, password_hash, password_salt, name, role, client_code, organization, avatar_initials, security_clearance

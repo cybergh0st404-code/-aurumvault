@@ -9,6 +9,13 @@ import {
   createDedicatedShipmentForClient,
   deleteShipmentFromDb,
 } from '@/lib/db/shipment-repository'
+import { recordAuditLog } from '@/lib/db/audit-repository'
+
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0].trim()
+  return request.headers.get('x-real-ip') || '127.0.0.1'
+}
 
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -29,28 +36,56 @@ export async function GET(request: Request) {
     const id = searchParams.get('id')
     const clientCodeParam = searchParams.get('clientCode')
 
-    if (id) {
-      const shipment = await getShipmentById(id)
-      return NextResponse.json({ success: true, shipment }, { headers: NO_CACHE_HEADERS })
+    const user = await getSessionUser()
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Sovereign session authentication required to inspect fleet consignments.' },
+        { status: 401, headers: NO_CACHE_HEADERS }
+      )
     }
 
-    const user = await getSessionUser()
+    // Client clearance: Strictly confined to their own clientCode consignments
+    if (user.role === 'client') {
+      if (!user.clientCode) {
+        return NextResponse.json({ success: true, shipments: [] }, { headers: NO_CACHE_HEADERS })
+      }
 
-    // If client user is logged in, filter strictly to their clientCode consignments
-    if (user && user.role === 'client' && user.clientCode) {
+      if (id) {
+        const shipment = await getShipmentById(id)
+        if (!shipment || shipment.clientCode !== user.clientCode) {
+          return NextResponse.json(
+            { success: false, error: 'Consignment record not found or access restricted under client clearance.' },
+            { status: 404, headers: NO_CACHE_HEADERS }
+          )
+        }
+        return NextResponse.json({ success: true, shipment }, { headers: NO_CACHE_HEADERS })
+      }
+
+      // Ignore any query clientCodeParam; enforce authenticated user's own clientCode
       const shipments = await getShipmentsByClientCode(user.clientCode)
       return NextResponse.json({ success: true, shipments }, { headers: NO_CACHE_HEADERS })
     }
 
-    // If specific clientCode requested by admin or authorized query
-    if (clientCodeParam) {
-      const shipments = await getShipmentsByClientCode(clientCodeParam)
+    // Admin clearance: Can view individual records, client batches, or full fleet
+    if (user.role === 'admin') {
+      if (id) {
+        const shipment = await getShipmentById(id)
+        return NextResponse.json({ success: true, shipment }, { headers: NO_CACHE_HEADERS })
+      }
+
+      if (clientCodeParam) {
+        const shipments = await getShipmentsByClientCode(clientCodeParam)
+        return NextResponse.json({ success: true, shipments }, { headers: NO_CACHE_HEADERS })
+      }
+
+      const shipments = await listAllShipments()
       return NextResponse.json({ success: true, shipments }, { headers: NO_CACHE_HEADERS })
     }
 
-    // Otherwise return all sovereign fleet shipments
-    const shipments = await listAllShipments()
-    return NextResponse.json({ success: true, shipments }, { headers: NO_CACHE_HEADERS })
+    return NextResponse.json(
+      { success: false, error: 'Forbidden. Clearance level insufficient.' },
+      { status: 403, headers: NO_CACHE_HEADERS }
+    )
   } catch (error) {
     console.error('Failed to get shipments:', error)
     return NextResponse.json(
@@ -106,6 +141,21 @@ export async function POST(request: Request) {
       shippingWeight,
       eta,
       destination,
+    })
+
+    await recordAuditLog({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: 'create_consignment',
+      targetId: created.id,
+      ipAddress: getClientIp(request),
+      details: {
+        trackingNumber: created.trackingNumber,
+        clientCode: created.clientCode,
+        origin: created.origin?.city,
+        destination: created.destination?.city,
+        shippingWeight: created.shippingWeight,
+      },
     })
 
     return NextResponse.json({ success: true, shipment: created }, { headers: NO_CACHE_HEADERS })
@@ -169,6 +219,21 @@ export async function PATCH(request: Request) {
       )
     }
 
+    await recordAuditLog({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: 'update_consignment',
+      targetId: shipmentId,
+      ipAddress: getClientIp(request),
+      details: {
+        status: body.status,
+        progress: body.progress,
+        isPaused: body.isPaused,
+        destinationCity: body.destinationCity || body.destination,
+        eta: body.eta,
+      },
+    })
+
     return NextResponse.json({ success: true, shipment: updated }, { headers: NO_CACHE_HEADERS })
   } catch (error) {
     console.error('Failed to update consignment:', error)
@@ -199,6 +264,16 @@ export async function DELETE(request: Request) {
     }
 
     const success = await deleteShipmentFromDb(id)
+    if (success) {
+      await recordAuditLog({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: 'delete_consignment',
+        targetId: id,
+        ipAddress: getClientIp(request),
+        details: { deletedShipmentId: id },
+      })
+    }
     return NextResponse.json({ success }, { headers: NO_CACHE_HEADERS })
   } catch (error) {
     console.error('Failed to delete consignment:', error)

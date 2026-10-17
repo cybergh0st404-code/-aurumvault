@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { findUserByEmail, createSession } from '@/lib/db/user-repository'
 import { verifyPassword } from '@/lib/db/password'
 import { UserProfile } from '@/lib/types'
-import { checkRateLimit, recordFailedAttempt, resetAttempts } from '@/lib/security/rate-limiter'
+import { checkRateLimit, recordFailedAttempt, resetAttempts, getClientIp } from '@/lib/security/rate-limiter'
 
 // Static dummy salt and hash for constant-time mitigation against user enumeration
 const DUMMY_SALT = '00000000000000000000000000000000'
@@ -13,15 +13,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { email, password } = body
 
-    // Derive rate limiting identifier from IP or normalized email
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-                     request.headers.get('x-real-ip') ||
-                     'local-client'
+    // Derive rate limiting identifier safely from validated client IP and normalized email
+    const clientIp = getClientIp(request)
     const normalizedEmail = (email || '').trim().toLowerCase()
     const rateKey = `${clientIp}:${normalizedEmail || 'empty'}`
 
-    // 1. Sliding window rate limit check
-    const rateLimit = checkRateLimit(rateKey)
+    // 1. Sliding window rate limit check (persisted in SQLite / Turso)
+    const rateLimit = await checkRateLimit(rateKey)
     if (!rateLimit.allowed) {
       return NextResponse.json(
         {
@@ -38,7 +36,7 @@ export async function POST(request: Request) {
     }
 
     if (!email || !password) {
-      recordFailedAttempt(rateKey)
+      await recordFailedAttempt(rateKey)
       return NextResponse.json(
         { success: false, error: 'Email and cryptographic passkey are required.' },
         { status: 400 }
@@ -50,7 +48,7 @@ export async function POST(request: Request) {
     // 2. Timing attack mitigation: if user not found, perform dummy scrypt computation
     if (!user) {
       verifyPassword(password, DUMMY_HASH, DUMMY_SALT)
-      const attempt = recordFailedAttempt(rateKey)
+      const attempt = await recordFailedAttempt(rateKey)
       const remainingMsg = attempt.isLocked
         ? ' Terminal locked for 15 minutes.'
         : ` (${attempt.remainingAttempts} attempts remaining).`
@@ -64,7 +62,7 @@ export async function POST(request: Request) {
     // 3. Cryptographic constant-time password verification
     const isMatch = verifyPassword(password, user.password_hash, user.password_salt)
     if (!isMatch) {
-      const attempt = recordFailedAttempt(rateKey)
+      const attempt = await recordFailedAttempt(rateKey)
       const remainingMsg = attempt.isLocked
         ? ' Terminal locked for 15 minutes.'
         : ` (${attempt.remainingAttempts} attempts remaining).`
@@ -87,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     // Success: clear rate limiter for this identity
-    resetAttempts(rateKey)
+    await resetAttempts(rateKey)
 
     // 4. Create session in SQLite / Turso
     const { token, expiresAt } = await createSession(user.id)
@@ -117,13 +115,14 @@ export async function POST(request: Request) {
       value: token,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
+      maxAge: 24 * 60 * 60,
       expires: new Date(expiresAt),
     })
 
     return response
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login security error:', error)
     return NextResponse.json(
       { success: false, error: 'Internal security authentication failure.' },

@@ -29,28 +29,56 @@ export async function GET(request: Request) {
     const id = searchParams.get('id')
     const clientCodeParam = searchParams.get('clientCode')
 
-    if (id) {
-      const holding = await getVaultHoldingById(id)
-      return NextResponse.json({ success: true, holding }, { headers: NO_CACHE_HEADERS })
+    const user = await getSessionUser()
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Depository session authentication required to inspect vault holdings.' },
+        { status: 401, headers: NO_CACHE_HEADERS }
+      )
     }
 
-    const user = await getSessionUser()
+    // Client clearance: Strictly confined to their own clientCode vault holdings
+    if (user.role === 'client') {
+      if (!user.clientCode) {
+        return NextResponse.json({ success: true, holdings: [] }, { headers: NO_CACHE_HEADERS })
+      }
 
-    // If client user is logged in, filter strictly to their clientCode holdings
-    if (user && user.role === 'client' && user.clientCode) {
+      if (id) {
+        const holding = await getVaultHoldingById(id)
+        if (!holding || holding.clientCode !== user.clientCode) {
+          return NextResponse.json(
+            { success: false, error: 'Vault holding record not found or access restricted under client clearance.' },
+            { status: 404, headers: NO_CACHE_HEADERS }
+          )
+        }
+        return NextResponse.json({ success: true, holding }, { headers: NO_CACHE_HEADERS })
+      }
+
+      // Ignore any query clientCodeParam; enforce authenticated user's own clientCode
       const holdings = await getVaultHoldingsByClientCode(user.clientCode)
       return NextResponse.json({ success: true, holdings }, { headers: NO_CACHE_HEADERS })
     }
 
-    // If specific clientCode requested
-    if (clientCodeParam) {
-      const holdings = await getVaultHoldingsByClientCode(clientCodeParam)
+    // Admin clearance: Can view individual records, client batches, or full vault holdings
+    if (user.role === 'admin') {
+      if (id) {
+        const holding = await getVaultHoldingById(id)
+        return NextResponse.json({ success: true, holding }, { headers: NO_CACHE_HEADERS })
+      }
+
+      if (clientCodeParam) {
+        const holdings = await getVaultHoldingsByClientCode(clientCodeParam)
+        return NextResponse.json({ success: true, holdings }, { headers: NO_CACHE_HEADERS })
+      }
+
+      const holdings = await listAllVaultHoldings()
       return NextResponse.json({ success: true, holdings }, { headers: NO_CACHE_HEADERS })
     }
 
-    // Otherwise return all vault holdings (admin / general)
-    const holdings = await listAllVaultHoldings()
-    return NextResponse.json({ success: true, holdings }, { headers: NO_CACHE_HEADERS })
+    return NextResponse.json(
+      { success: false, error: 'Forbidden. Clearance level insufficient.' },
+      { status: 403, headers: NO_CACHE_HEADERS }
+    )
   } catch (error) {
     console.error('Failed to get vault holdings:', error)
     return NextResponse.json(
