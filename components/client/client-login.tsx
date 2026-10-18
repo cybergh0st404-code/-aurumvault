@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { Shield, Lock, Key, CheckCircle2, ArrowRight, Building2, User, AlertCircle, Fingerprint, ShieldCheck, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Shield, Lock, Key, CheckCircle2, ArrowRight, Building2, User, AlertCircle, Fingerprint, ShieldCheck, Sparkles, Eye, EyeOff, Clock } from 'lucide-react'
 import Link from 'next/link'
 
 interface ClientLoginProps {
@@ -10,7 +10,7 @@ interface ClientLoginProps {
 }
 
 export function ClientLogin({ onSuccess }: ClientLoginProps) {
-  const { login, user } = useAuth()
+  const { login, user, inactivityNotice, clearInactivityNotice } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -74,6 +74,22 @@ export function ClientLogin({ onSuccess }: ClientLoginProps) {
                 Cryptographic dual-handshake authentication for allocated Swiss vault depositors, family offices, and sovereign trustees.
               </p>
             </div>
+
+            {inactivityNotice && (
+              <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-200">
+                <div className="flex items-center gap-2.5">
+                  <Clock size={16} className="shrink-0 text-amber-400" />
+                  <span>{inactivityNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearInactivityNotice}
+                  className="text-amber-400 hover:text-white text-xs font-mono underline ml-2 shrink-0"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             {error && (
               <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-xs text-red-300">

@@ -37,39 +37,6 @@ interface ShipmentsContextType {
 }
 
 
-const initialQuotes: QuoteInquiry[] = [
-  {
-    id: 'INQ-2026-0941',
-    clientName: 'Lord Alistair Sterling',
-    email: 'sterling.trust@genevaprivate.ch',
-    assetType: 'Fine Horology & Rare Timepieces',
-    declaredValue: 4200000,
-    originCity: 'Zurich',
-    originCode: 'ZRH-FP',
-    destinationCity: 'Singapore',
-    destinationCode: 'SIN-LEFP',
-    transitMode: 'Dedicated Chartered Aircraft',
-    notes: 'Requires dual armed tarmac escort at Changi VIP ramp. Nitrogen-purged cask requested.',
-    createdAt: '14 Mar 2026, 09:40 CET',
-    status: 'pending',
-  },
-  {
-    id: 'INQ-2026-0882',
-    clientName: 'Dr. Elena Rostova',
-    email: 'rostova.specie@zurich-metals.com',
-    assetType: 'Precious Metals & Bullion',
-    declaredValue: 12500000,
-    originCity: 'Dubai',
-    originCode: 'DXB-DMCC',
-    destinationCity: 'Geneva',
-    destinationCode: 'GVA-FP',
-    transitMode: 'Bonded Air-Specie Hold',
-    notes: 'Twenty (20) x 400 oz 999.9 Good Delivery cast bars. Direct inward Freeport vaulting.',
-    createdAt: '13 Mar 2026, 18:20 UTC',
-    status: 'approved',
-  },
-]
-
 const ShipmentsContext = createContext<ShipmentsContextType | undefined>(undefined)
 
 const STORAGE_KEY = 'aurumvault_shipments_v1'
@@ -80,7 +47,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [selectedShipmentId, setSelectedShipmentId] = useState<string>('')
-  const [quoteInquiries, setQuoteInquiries] = useState<QuoteInquiry[]>(initialQuotes)
+  const [quoteInquiries, setQuoteInquiries] = useState<QuoteInquiry[]>([])
   const [vaultHoldings, setVaultHoldings] = useState<VaultHolding[]>([])
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings>({
     isCruising: true,
@@ -485,7 +452,7 @@ export function ShipmentsProvider({ children }: { children: React.ReactNode }) {
       setShipments([])
       setVaultHoldings([])
     }
-    setQuoteInquiries(initialQuotes)
+    setQuoteInquiries([])
     setSimulationSettings({ isCruising: true, cruiseSpeed: 1 })
   }
 

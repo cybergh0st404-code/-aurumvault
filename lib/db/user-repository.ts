@@ -403,6 +403,9 @@ export async function updateUserProfile(
             WHERE id = ?`,
       args: [name, email, hash, salt, organization, security_clearance, client_code, initials, userId],
     })
+
+    // Security Hardening: Immediately revoke all existing sessions on password change
+    await terminateUserSessions(userId)
   } else {
     await db.execute({
       sql: `UPDATE users

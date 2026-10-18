@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
 import { UserProfile, UserRole } from './types'
 
 export interface AuthContextType {
@@ -12,6 +12,8 @@ export interface AuthContextType {
   quickLogin: (accountKey: 'admin') => void
   logout: () => Promise<void>
   demoAccounts: DemoAccountInfo[]
+  inactivityNotice: string | null
+  clearInactivityNotice: () => void
 }
 
 export interface DemoAccountInfo {
@@ -36,12 +38,19 @@ export const DEMO_ACCOUNTS: DemoAccountInfo[] = [
 ]
 
 const AUTH_STORAGE_KEY = 'aurumvault_auth_v1'
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes institutional idle timeout
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [inactivityNotice, setInactivityNotice] = useState<string | null>(null)
+  const lastActivityRef = useRef<number>(Date.now())
+
+  const clearInactivityNotice = useCallback(() => {
+    setInactivityNotice(null)
+  }, [])
 
   // Verify active SQLite session on mount and continuously validate security restrictions
   useEffect(() => {
@@ -150,6 +159,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistUser(null)
   }
 
+  // Institutional Inactivity Timeout (Auto-logout after 15 minutes of idle time)
+  useEffect(() => {
+    if (!user) return
+
+    lastActivityRef.current = Date.now()
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+    const handleUserActivity = () => {
+      lastActivityRef.current = Date.now()
+    }
+
+    activityEvents.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }))
+
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= INACTIVITY_TIMEOUT_MS) {
+        setInactivityNotice('Session terminated: Automatically signed out after 15 minutes of operational inactivity.')
+        logout()
+      }
+    }, 10000)
+
+    return () => {
+      activityEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity))
+      clearInterval(timer)
+    }
+  }, [user])
+
   return (
     <AuthContext.Provider
       value={{
@@ -161,6 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         quickLogin,
         logout,
         demoAccounts: DEMO_ACCOUNTS,
+        inactivityNotice,
+        clearInactivityNotice,
       }}
     >
       {children}
